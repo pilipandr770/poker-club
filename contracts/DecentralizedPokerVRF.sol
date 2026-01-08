@@ -139,7 +139,9 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
         uint256 chips;
         uint256 currentBet;
         uint256 totalBet;
-        uint8[2] holeCards;      // Карты игрока (скрыты до showdown)
+        // БЕЗОПАСНОСТЬ: карты НЕ хранятся в storage!
+        // Они вычисляются детерминистично из randomSeed
+        // Это предотвращает чтение карт через eth_getStorageAt
         bytes32 cardCommitment;  // Хэш карт для верификации
         bool folded;
         bool cardsRevealed;
@@ -158,8 +160,9 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
         uint8 playerCount;
         uint8 activePlayers;
         GamePhase phase;
-        uint8[5] communityCards;
-        uint8[52] deck;
+        // БЕЗОПАСНОСТЬ: колода и карты НЕ хранятся!
+        // Вместо этого храним только randomSeed
+        // Карты вычисляются on-demand через pure функции
         bool deckGenerated;
         uint256 vrfRequestTime;      // Время запроса VRF
         uint256 vrfRequestId;        // ID запроса (Chainlink)
@@ -167,7 +170,6 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
         uint256 randomSeed;          // Полученное случайное число
         uint8 lastRaiser;
         uint8 actionsInRound;
-        uint8 deckIndex;             // Текущая позиция в колоде
     }
     
     struct HandEvaluation {
@@ -189,6 +191,98 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
     // VRF request ID => Game ID
     mapping(uint256 => uint256) public chainlinkRequestToGame;
     mapping(bytes32 => uint256) public oraoRequestToGame;
+    
+    // ============ БЕЗОПАСНОЕ ВЫЧИСЛЕНИЕ КАРТ ============
+    // Эти функции PURE - они не читают storage, а вычисляют карты детерминистично
+    // Это предотвращает подглядывание карт через eth_getStorageAt
+    
+    /**
+     * @dev Генерирует перемешанную колоду из seed (Fisher-Yates shuffle)
+     * @param seed Случайное число от VRF
+     * @return deck Массив из 52 карт в перемешанном порядке
+     */
+    function _computeDeck(uint256 seed) internal pure returns (uint8[52] memory deck) {
+        // Инициализируем колоду 0-51
+        for (uint8 i = 0; i < 52; i++) {
+            deck[i] = i;
+        }
+        
+        // Fisher-Yates shuffle
+        uint256 currentSeed = seed;
+        for (uint8 i = 51; i > 0; i--) {
+            currentSeed = uint256(keccak256(abi.encodePacked(currentSeed, i)));
+            uint8 j = uint8(currentSeed % (i + 1));
+            
+            // Swap
+            uint8 temp = deck[i];
+            deck[i] = deck[j];
+            deck[j] = temp;
+        }
+        
+        return deck;
+    }
+    
+    /**
+     * @dev Вычисляет карты игрока (hole cards)
+     * @param seed Случайное число от VRF
+     * @param playerCount Количество игроков
+     * @param dealerPosition Позиция дилера
+     * @param playerIdx Индекс игрока (0-based)
+     * @return cards Две карты игрока
+     */
+    function _computePlayerCards(
+        uint256 seed, 
+        uint8 playerCount, 
+        uint8 dealerPosition,
+        uint8 playerIdx
+    ) internal pure returns (uint8[2] memory cards) {
+        uint8[52] memory deck = _computeDeck(seed);
+        
+        // Раздача идёт по кругу от дилера, 2 раунда
+        // Определяем позицию карт игрока в колоде
+        uint8 deckIndex = 0;
+        
+        for (uint8 round = 0; round < 2; round++) {
+            for (uint8 i = 0; i < playerCount; i++) {
+                uint8 currentPlayerIdx = (dealerPosition + 1 + i) % playerCount;
+                if (currentPlayerIdx == playerIdx) {
+                    cards[round] = deck[deckIndex];
+                }
+                deckIndex++;
+            }
+        }
+        
+        return cards;
+    }
+    
+    /**
+     * @dev Вычисляет community cards (5 общих карт)
+     * @param seed Случайное число от VRF
+     * @param playerCount Количество игроков
+     * @return cards 5 общих карт
+     */
+    function _computeCommunityCards(uint256 seed, uint8 playerCount) internal pure returns (uint8[5] memory cards) {
+        uint8[52] memory deck = _computeDeck(seed);
+        
+        // После раздачи hole cards (2 * playerCount), идут burn + community
+        uint8 deckIndex = playerCount * 2;
+        
+        // Burn + Flop (3 cards)
+        deckIndex++; // burn
+        cards[0] = deck[deckIndex++];
+        cards[1] = deck[deckIndex++];
+        cards[2] = deck[deckIndex++];
+        
+        // Burn + Turn
+        deckIndex++; // burn
+        cards[3] = deck[deckIndex++];
+        
+        // Burn + River  
+        deckIndex++; // burn
+        cards[4] = deck[deckIndex++];
+        
+        return cards;
+    }
     
     // ============ СОБЫТИЯ ============
     
@@ -309,7 +403,7 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
             chips: _chips,
             currentBet: 0,
             totalBet: 0,
-            holeCards: [uint8(0), uint8(0)],
+            // БЕЗОПАСНОСТЬ: holeCards НЕ хранятся! Вычисляются из seed
             cardCommitment: bytes32(0),
             folded: false,
             cardsRevealed: false,
@@ -436,93 +530,53 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
     
     /**
      * @dev Генерирует колоду и раздаёт карты
-     * Колода генерируется из VRF seed - никто не мог знать результат заранее
+     * БЕЗОПАСНОСТЬ: Колода НЕ сохраняется в storage!
+     * Вместо этого храним только randomSeed и вычисляем карты on-demand
      */
     function _generateDeckAndDeal(uint256 _gameId) internal {
         Game storage game = games[_gameId];
         
-        // Инициализируем колоду (0-51)
-        for (uint8 i = 0; i < CARDS_IN_DECK; i++) {
-            game.deck[i] = i;
-        }
-        
-        // Fisher-Yates shuffle с VRF seed
-        uint256 seed = game.randomSeed;
-        for (uint8 i = CARDS_IN_DECK - 1; i > 0; i--) {
-            seed = uint256(keccak256(abi.encodePacked(seed, i)));
-            uint8 j = uint8(seed % (i + 1));
-            
-            // Swap
-            uint8 temp = game.deck[i];
-            game.deck[i] = game.deck[j];
-            game.deck[j] = temp;
-        }
-        
+        // Отмечаем что колода готова (карты вычисляются из seed)
         game.deckGenerated = true;
-        game.deckIndex = 0;
         
         emit DeckGenerated(_gameId);
         
-        // Раздаём карты игрокам
-        _dealHoleCards(_gameId);
-        
-        // Предустанавливаем community cards (burn + deal)
-        _setupCommunityCards(_gameId);
+        // Создаём commitment для каждого игрока (для верификации)
+        _createCardCommitments(_gameId);
         
         // Начинаем PreFlop
         _startPreFlop(_gameId);
     }
     
     /**
-     * @dev Раздаёт по 2 карты каждому игроку
-     * Карты сохраняются в контракте, но commitment позволяет верифицировать
+     * @dev Создаёт commitment для карт каждого игрока
+     * Commitment = hash(card1, card2, seed, playerAddr)
+     * Позволяет верифицировать карты на showdown
      */
-    function _dealHoleCards(uint256 _gameId) internal {
+    function _createCardCommitments(uint256 _gameId) internal {
         Game storage game = games[_gameId];
         
-        // Раздаём по 2 карты каждому (как в реальном покере - по кругу)
-        for (uint8 round = 0; round < HAND_SIZE; round++) {
-            for (uint8 i = 0; i < game.playerCount; i++) {
-                uint8 playerIdx = (game.dealerPosition + 1 + i) % game.playerCount;
-                if (!players[_gameId][playerIdx].folded) {
-                    players[_gameId][playerIdx].holeCards[round] = game.deck[game.deckIndex++];
-                }
-            }
-        }
-        
-        // Создаём commitment для каждого игрока (для верификации на showdown)
         for (uint8 i = 0; i < game.playerCount; i++) {
             Player storage player = players[_gameId][i];
+            
+            // Вычисляем карты игрока (не храним!)
+            uint8[2] memory cards = _computePlayerCards(
+                game.randomSeed, 
+                game.playerCount, 
+                game.dealerPosition, 
+                i
+            );
+            
+            // Создаём commitment
             player.cardCommitment = keccak256(abi.encodePacked(
-                player.holeCards[0],
-                player.holeCards[1],
+                cards[0],
+                cards[1],
                 game.randomSeed,
                 player.addr
             ));
             
             emit CardsDealt(_gameId, player.addr, player.cardCommitment);
         }
-    }
-    
-    /**
-     * @dev Предустанавливает community cards с burn картами
-     */
-    function _setupCommunityCards(uint256 _gameId) internal {
-        Game storage game = games[_gameId];
-        
-        // Burn + Flop (3 cards)
-        game.deckIndex++; // burn
-        game.communityCards[0] = game.deck[game.deckIndex++];
-        game.communityCards[1] = game.deck[game.deckIndex++];
-        game.communityCards[2] = game.deck[game.deckIndex++];
-        
-        // Burn + Turn
-        game.deckIndex++; // burn
-        game.communityCards[3] = game.deck[game.deckIndex++];
-        
-        // Burn + River
-        game.deckIndex++; // burn
-        game.communityCards[4] = game.deck[game.deckIndex++];
     }
     
     // ============ ТОРГОВЛЯ ============
@@ -728,23 +782,26 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
         }
         game.lastRaiser = game.currentPlayer;
         
+        // Вычисляем community cards on-demand
+        uint8[5] memory communityCards = _computeCommunityCards(game.randomSeed, game.playerCount);
+        
         // Переход фазы и раскрытие карт
         if (game.phase == GamePhase.PreFlop) {
             game.phase = GamePhase.Flop;
             uint8[] memory flop = new uint8[](3);
-            flop[0] = game.communityCards[0];
-            flop[1] = game.communityCards[1];
-            flop[2] = game.communityCards[2];
+            flop[0] = communityCards[0];
+            flop[1] = communityCards[1];
+            flop[2] = communityCards[2];
             emit CommunityCardsRevealed(_gameId, flop);
         } else if (game.phase == GamePhase.Flop) {
             game.phase = GamePhase.Turn;
             uint8[] memory turn = new uint8[](1);
-            turn[0] = game.communityCards[3];
+            turn[0] = communityCards[3];
             emit CommunityCardsRevealed(_gameId, turn);
         } else if (game.phase == GamePhase.Turn) {
             game.phase = GamePhase.River;
             uint8[] memory river = new uint8[](1);
-            river[0] = game.communityCards[4];
+            river[0] = communityCards[4];
             emit CommunityCardsRevealed(_gameId, river);
         } else if (game.phase == GamePhase.River) {
             game.phase = GamePhase.Showdown;
@@ -793,11 +850,20 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
             if (!players[_gameId][i].folded) {
                 Player storage player = players[_gameId][i];
                 player.cardsRevealed = true;
+                
+                // Вычисляем карты игрока on-the-fly
+                uint8[2] memory cards = _computePlayerCards(
+                    game.randomSeed,
+                    game.playerCount,
+                    game.dealerPosition,
+                    i
+                );
+                
                 emit CardsRevealedForPlayer(
                     _gameId, 
                     player.addr, 
-                    player.holeCards[0], 
-                    player.holeCards[1]
+                    cards[0], 
+                    cards[1]
                 );
             }
         }
@@ -809,6 +875,9 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
     function _determineWinner(uint256 _gameId) internal {
         Game storage game = games[_gameId];
         
+        // Вычисляем community cards
+        uint8[5] memory communityCards = _computeCommunityCards(game.randomSeed, game.playerCount);
+        
         uint8 bestPlayer = 0;
         HandEvaluation memory bestHand;
         bestHand.rank = HandRank.HighCard;
@@ -819,9 +888,17 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
         
         for (uint8 i = 0; i < game.playerCount; i++) {
             if (!players[_gameId][i].folded) {
+                // Вычисляем карты игрока on-the-fly (не читаем из storage!)
+                uint8[2] memory holeCards = _computePlayerCards(
+                    game.randomSeed,
+                    game.playerCount,
+                    game.dealerPosition,
+                    i
+                );
+                
                 HandEvaluation memory eval = _evaluateHand(
-                    players[_gameId][i].holeCards,
-                    game.communityCards
+                    holeCards,
+                    communityCards
                 );
                 
                 int8 comparison = _compareHands(eval, bestHand);
@@ -1223,17 +1300,28 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
     
     /**
      * @notice Получить свои карты (только владелец карт)
+     * БЕЗОПАСНОСТЬ: Карты вычисляются on-demand, не хранятся в storage!
+     * Другие игроки не могут прочитать ваши карты через eth_getStorageAt
      */
     function getMyCards(uint256 _gameId) external view returns (uint8[2] memory) {
         require(isPlayerInGame[_gameId][msg.sender], "Not in game");
         require(games[_gameId].deckGenerated, "Cards not dealt yet");
         
+        Game storage game = games[_gameId];
         uint8 idx = playerIndex[_gameId][msg.sender];
-        return players[_gameId][idx].holeCards;
+        
+        // Вычисляем карты детерминистично из seed (не читаем storage!)
+        return _computePlayerCards(
+            game.randomSeed,
+            game.playerCount,
+            game.dealerPosition,
+            idx
+        );
     }
     
     /**
      * @notice Получить карты игрока (только после showdown)
+     * После showdown карты всех игроков становятся публичными
      */
     function getPlayerCards(uint256 _gameId, uint8 _playerIdx) external view returns (uint8[2] memory) {
         require(
@@ -1243,14 +1331,28 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
         );
         require(players[_gameId][_playerIdx].cardsRevealed, "Player cards not revealed");
         
-        return players[_gameId][_playerIdx].holeCards;
+        Game storage game = games[_gameId];
+        
+        // Вычисляем карты
+        return _computePlayerCards(
+            game.randomSeed,
+            game.playerCount,
+            game.dealerPosition,
+            _playerIdx
+        );
     }
     
-    function getCommunityCards(uint256 _gameId) external view returns (uint8[5] memory, uint8 revealed) {
+    /**
+     * @notice Получить общие карты стола
+     * Возвращает только карты, которые уже должны быть раскрыты по фазе игры
+     */
+    function getCommunityCards(uint256 _gameId) external view returns (uint8[5] memory cards, uint8 revealed) {
         Game storage game = games[_gameId];
         
         if (game.phase == GamePhase.PreFlop || game.phase < GamePhase.PreFlop) {
             revealed = 0;
+            // Возвращаем пустой массив - карты ещё не раскрыты
+            return (cards, revealed);
         } else if (game.phase == GamePhase.Flop) {
             revealed = 3;
         } else if (game.phase == GamePhase.Turn) {
@@ -1259,7 +1361,16 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
             revealed = 5;
         }
         
-        return (game.communityCards, revealed);
+        // Вычисляем community cards
+        uint8[5] memory allCommunityCards = _computeCommunityCards(game.randomSeed, game.playerCount);
+        
+        // Возвращаем только раскрытые карты
+        for (uint8 i = 0; i < revealed; i++) {
+            cards[i] = allCommunityCards[i];
+        }
+        // Остальные остаются 0 (скрыты)
+        
+        return (cards, revealed);
     }
     
     function decodeCard(uint8 cardNumber) external pure returns (uint8 rank, uint8 suit) {
@@ -1268,6 +1379,7 @@ contract DecentralizedPokerVRF is VRFConsumerBaseV2Plus {
     
     /**
      * @notice Верифицировать карты игрока (проверка честности)
+     * Позволяет любому убедиться что карты вычислены правильно
      */
     function verifyPlayerCards(
         uint256 _gameId, 

@@ -141,6 +141,129 @@
             overflow-y: auto;
         }
         #log p { margin: 5px 0; font-size: 13px; color: #90EE90; }
+        
+        /* Setup Panel - Create & Join Game */
+        .setup-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .setup-section {
+            background: linear-gradient(135deg, #2d5a2d, #1a4d1a);
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid #4a8b4a;
+            text-align: center;
+        }
+        .setup-section h3 {
+            margin: 0 0 15px 0;
+            color: #ffd700;
+            font-size: 16px;
+        }
+        .input-row {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .input-row input, .input-row select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #4a8b4a;
+            background: #1a4d1a;
+            color: white;
+            font-size: 14px;
+        }
+        .input-row input::placeholder {
+            color: #8bc48b;
+        }
+        .hint-text {
+            font-size: 12px;
+            color: #90EE90;
+            margin: 10px 0;
+            min-height: 30px;
+        }
+        
+        /* Game Actions Panel */
+        .game-actions {
+            background: linear-gradient(135deg, #2d5a2d, #1a4d1a);
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid #4a8b4a;
+            margin: 20px 0;
+        }
+        .actions-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .raise-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .raise-group input {
+            width: 100px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #4a8b4a;
+            background: #1a4d1a;
+            color: white;
+        }
+        
+        /* Button Styles */
+        .btn-primary {
+            background: linear-gradient(135deg, #4CAF50, #388E3C);
+            padding: 12px 24px;
+            font-size: 14px;
+        }
+        .btn-primary:hover { background: linear-gradient(135deg, #66BB6A, #43A047); }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #2E7D32, #1B5E20);
+            padding: 12px 24px;
+            font-size: 14px;
+        }
+        .btn-success:hover { background: linear-gradient(135deg, #388E3C, #2E7D32); }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #d32f2f, #b71c1c);
+            padding: 14px 28px;
+            font-size: 16px;
+        }
+        .btn-danger:hover { background: linear-gradient(135deg, #f44336, #d32f2f); }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #f57c00, #e65100);
+            padding: 14px 28px;
+            font-size: 16px;
+        }
+        .btn-warning:hover { background: linear-gradient(135deg, #ff9800, #f57c00); }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #1976D2, #0D47A1);
+            padding: 14px 28px;
+            font-size: 16px;
+        }
+        .btn-info:hover { background: linear-gradient(135deg, #2196F3, #1976D2); }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .setup-panel {
+                grid-template-columns: 1fr;
+            }
+            .actions-row {
+                flex-direction: column;
+            }
+            .raise-group {
+                width: 100%;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -156,9 +279,45 @@
             <h2>Game Status</h2>
             <p id="game-status">No active game</p>
             <p id="last-game" style="margin: 6px 0;">No games created yet.</p>
-            <p id="ui-version" style="margin: 6px 0; color: #aaa;">UI version: 2026-01-08-2</p>
+            <p id="ui-version" style="margin: 6px 0; color: #aaa;">UI version: 2026-01-08-3</p>
             <p id="rpc-check" style="margin: 6px 0; color: #aaa; font-size: 0.9em;"></p>
             <div id="created-games" style="margin: 10px 0;"></div>
+        </div>
+
+        <!-- Create & Join Game - Above the table -->
+        <div class="setup-panel">
+            <div class="setup-section">
+                <h3>🎮 Create Game</h3>
+                <div class="input-row">
+                    <input type="number" id="buyIn" placeholder="Buy-in (ETH)" step="0.01">
+                    <input type="number" id="smallBlind" placeholder="SB" step="0.001">
+                    <input type="number" id="bigBlind" placeholder="BB" step="0.001">
+                </div>
+                <p id="create-hint" class="hint-text">
+                    BB = 2×SB. Buy-in ≥ 20×BB
+                </p>
+                <button class="needs-wallet btn-primary" onclick="createGame()">Create Game</button>
+            </div>
+
+            <div class="setup-section">
+                <h3>🚪 Join Game</h3>
+                <div class="input-row">
+                    <input type="number" id="gameId" placeholder="Game ID">
+                    <select id="gameIdSelect">
+                        <option value="">Select game...</option>
+                    </select>
+                </div>
+                <p id="join-hint" class="hint-text">
+                    Enter Game ID to see buy-in
+                </p>
+                <button class="needs-wallet btn-primary" onclick="joinGame()">Join Game</button>
+            </div>
+
+            <div class="setup-section">
+                <h3>▶️ Start</h3>
+                <p class="hint-text">Need 2+ players</p>
+                <button class="needs-wallet btn-success" onclick="startGame()">Start Game</button>
+            </div>
         </div>
 
         <!-- Poker Table -->
@@ -214,41 +373,98 @@
             </div>
         </div>
 
-        <div class="actions">
-            <h3>Create Game</h3>
-            <input type="number" id="buyIn" placeholder="Buy-in amount (ETH)" step="0.01">
-            <input type="number" id="smallBlind" placeholder="Small blind" step="0.001">
-            <input type="number" id="bigBlind" placeholder="Big blind" step="0.001">
-            <p id="create-hint" style="margin: 6px 0; color: #ccc;">
-                Hint: Big blind must be 2x small blind. Buy-in must be at least 20x big blind.
-            </p>
-            <button class="needs-wallet" onclick="createGame()">Create Game</button>
+        <!-- Game Actions - Below the table -->
+        <div class="game-actions" id="game-actions-panel">
+            <div class="actions-row">
+                <button class="needs-wallet btn-danger" onclick="fold()">❌ Fold</button>
+                <button class="needs-wallet btn-warning" onclick="call()">✋ Call</button>
+                <div class="raise-group">
+                    <input type="number" id="raiseAmount" placeholder="Amount" step="0.01">
+                    <button class="needs-wallet btn-success" onclick="raise()">⬆️ Raise</button>
+                </div>
+                <button class="needs-wallet btn-info" onclick="getMyCards()">🃏 Show Cards</button>
+            </div>
         </div>
 
-        <div class="actions">
-            <h3>Join Game</h3>
-            <input type="number" id="gameId" placeholder="Game ID">
-            <select id="gameIdSelect" style="margin: 5px; padding: 8px;">
-                <option value="">Select a created game...</option>
-            </select>
-            <p id="join-hint" style="margin: 6px 0; color: #333;">
-                Hint: Enter a game ID to preview the required buy-in.
-            </p>
-            <button class="needs-wallet" onclick="joinGame()">Join Game</button>
-        </div>
-
-        <div class="actions">
-            <h3>Game Actions</h3>
-            <button class="needs-wallet" onclick="startGame()">Start Game</button>
-            <button class="needs-wallet" onclick="fold()">Fold</button>
-            <button class="needs-wallet" onclick="call()">Call</button>
-            <input type="number" id="raiseAmount" placeholder="Raise amount" step="0.01">
-            <button class="needs-wallet" onclick="raise()">Raise</button>
-            <button class="needs-wallet" onclick="getMyCards()">Show My Cards</button>
+        <!-- Game Result Modal -->
+        <div id="game-result-modal" class="result-modal" style="display: none;">
+            <div class="result-content">
+                <div id="result-icon" class="result-icon">🏆</div>
+                <h2 id="result-title">Game Over!</h2>
+                <div id="result-details" class="result-details"></div>
+                <div id="result-cards" class="result-cards"></div>
+                <div id="result-payout" class="result-payout"></div>
+                <button onclick="closeResultModal()" class="btn-primary">Close</button>
+            </div>
         </div>
 
         <div id="log"></div>
     </div>
+
+    <style>
+        /* Game Result Modal */
+        .result-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .result-content {
+            background: linear-gradient(145deg, #1a4d1a, #2d5a2d);
+            border: 4px solid #ffd700;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            max-width: 500px;
+            box-shadow: 0 0 50px rgba(255,215,0,0.3);
+        }
+        .result-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        .result-content h2 {
+            color: #ffd700;
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+        .result-details {
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            color: #fff;
+            font-size: 16px;
+            line-height: 1.8;
+        }
+        .result-cards {
+            margin: 20px 0;
+        }
+        .result-payout {
+            background: linear-gradient(90deg, #2e7d32, #1b5e20);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            color: #90EE90;
+            font-size: 14px;
+        }
+        .result-payout .amount {
+            font-size: 28px;
+            color: #ffd700;
+            font-weight: bold;
+            display: block;
+            margin: 10px 0;
+        }
+        .result-win { border-color: #ffd700; }
+        .result-lose { border-color: #d32f2f; }
+        .result-content.result-win h2 { color: #ffd700; }
+        .result-content.result-lose h2 { color: #ff6b6b; }
+    </style>
 
     <script src="./node_modules/ethers/dist/ethers.umd.min.js"></script>
     <script>
@@ -341,7 +557,11 @@
             "function isPlayerInGame(uint256 gameId, address player) view returns (bool)",
             "function gameCounter() view returns (uint256)",
             "function playerIndex(uint256 gameId, address player) view returns (uint8)",
-            "event GameCreated(uint256 indexed gameId, uint256 buyIn, uint256 smallBlind, uint256 bigBlind)"
+            "function getPlayerCards(uint256 gameId, uint8 playerIdx) view returns (uint8[2])",
+            "event GameCreated(uint256 indexed gameId, uint256 buyIn, uint256 smallBlind, uint256 bigBlind)",
+            "event ShowdownResult(uint256 indexed gameId, address winner, uint8 rank, uint256 winnings)",
+            "event PlayerActed(uint256 indexed gameId, address player, uint8 action, uint256 amount)",
+            "event CommissionCollected(uint256 indexed gameId, uint256 amount)"
         ];
 
         // Mock VRF ABI (for local testing)
@@ -359,9 +579,10 @@
         const VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
         
         function cardToString(cardNum) {
-            if (cardNum === 0 || cardNum === undefined || cardNum === null) return null;
+            // Card 0 = 2♠ is valid! Only undefined/null or out of range 0-51 is invalid
+            if (cardNum === undefined || cardNum === null) return null;
             const adjustedNum = Number(cardNum);
-            if (adjustedNum < 0 || adjustedNum > 51) return null;
+            if (!Number.isFinite(adjustedNum) || adjustedNum < 0 || adjustedNum > 51) return null;
             const suit = Math.floor(adjustedNum / 13);
             const value = adjustedNum % 13;
             return { 
@@ -465,8 +686,244 @@
 
         let currentGameId = null;
         let gameUpdateInterval = null;
+        let lastKnownPhase = null;
+        let gameResultShown = false;
 
         const CREATED_GAMES_STORAGE_KEY = 'poker.createdGames';
+
+        // Hand rank names for showdown result
+        const HAND_RANK_NAMES = [
+            'High Card',
+            'Pair',
+            'Two Pair',
+            'Three of a Kind',
+            'Straight',
+            'Flush',
+            'Full House',
+            'Four of a Kind',
+            'Straight Flush',
+            'Royal Flush'
+        ];
+
+        function getHandRankName(rank) {
+            return HAND_RANK_NAMES[rank] || `Unknown (${rank})`;
+        }
+
+        // Show game result modal
+        async function showGameResult(gameId) {
+            if (gameResultShown) return;
+            gameResultShown = true;
+
+            const modal = document.getElementById('game-result-modal');
+            const iconEl = document.getElementById('result-icon');
+            const titleEl = document.getElementById('result-title');
+            const detailsEl = document.getElementById('result-details');
+            const cardsEl = document.getElementById('result-cards');
+            const payoutEl = document.getElementById('result-payout');
+            const contentEl = modal.querySelector('.result-content');
+
+            try {
+                const me = await signer.getAddress();
+                const myIdx = Number(await contract.playerIndex(gameId, me));
+                
+                // Get game info
+                const gameInfo = await contract.getGameInfo(gameId);
+                const playerCount = Number(gameInfo.playerCount);
+                const buyIn = gameInfo.buyIn;
+                // Calculate total pot (buyIn * playerCount, since pot may be 0 after payout)
+                const totalPot = buyIn * BigInt(playerCount);
+                
+                // Calculate fromBlock for event queries
+                let fromBlock = 0;
+                try {
+                    const currentBlock = await provider.getBlockNumber();
+                    fromBlock = Math.max(0, currentBlock - 1000);
+                } catch (_) {
+                    fromBlock = 0;
+                }
+                
+                // Get winner from ShowdownResult event
+                let winner = null;
+                let winnings = BigInt(0);
+                let handRank = 0;
+                let commission = BigInt(0);
+                let winReason = '';
+                
+                const filter = contract.filters.ShowdownResult(gameId);
+                const events = await contract.queryFilter(filter, fromBlock);
+                
+                if (events.length > 0) {
+                    const ev = events[events.length - 1];
+                    winner = ev.args.winner;
+                    handRank = Number(ev.args.rank);
+                    winnings = ev.args.winnings;
+                    winReason = 'cards';
+                }
+                
+                // Check for commission
+                const commFilter = contract.filters.CommissionCollected(gameId);
+                const commEvents = await contract.queryFilter(commFilter, fromBlock);
+                if (commEvents.length > 0) {
+                    commission = commEvents[0].args.amount;
+                }
+
+                // Check if someone folded
+                const actionFilter = contract.filters.PlayerActed(gameId);
+                const actionEvents = await contract.queryFilter(actionFilter, fromBlock);
+                for (const ev of actionEvents) {
+                    if (Number(ev.args.action) === 1) {
+                        // Someone folded (action 1 = Fold)
+                        if (ev.args.player.toLowerCase() === me.toLowerCase()) {
+                            winReason = 'my_fold';
+                        } else {
+                            winReason = 'fold';
+                            // If opponent folded, I'm the winner
+                            if (!winner) {
+                                winner = me;
+                            }
+                        }
+                        break;
+                    }
+                }
+                
+                // If winnings is 0, calculate from pot
+                if (winnings === BigInt(0) && winner) {
+                    // Winner gets pot minus commission (10%)
+                    winnings = totalPot - (totalPot / BigInt(10));
+                    if (commission === BigInt(0)) {
+                        commission = totalPot / BigInt(10);
+                    }
+                }
+                
+                // Determine if I won
+                const isWinner = winner && winner.toLowerCase() === me.toLowerCase();
+
+                // Update modal based on win/lose
+                if (isWinner) {
+                    contentEl.classList.add('result-win');
+                    contentEl.classList.remove('result-lose');
+                    iconEl.textContent = '🏆';
+                    titleEl.textContent = 'Вы выиграли!';
+                    
+                    const winningsEth = ethers.formatEther(winnings);
+                    const commissionEth = commission > 0 ? ethers.formatEther(commission) : '0';
+                    
+                    if (winReason === 'fold') {
+                        detailsEl.innerHTML = `
+                            <p>🎉 <strong>Поздравляем!</strong></p>
+                            <p>Ваш соперник сбросил карты (Fold)</p>
+                            <p>Вы забираете банк!</p>
+                        `;
+                    } else {
+                        detailsEl.innerHTML = `
+                            <p>🎉 <strong>Поздравляем!</strong></p>
+                            <p>Ваша комбинация: <strong>${getHandRankName(handRank)}</strong></p>
+                            <p>Вы победили в Showdown!</p>
+                        `;
+                    }
+                    
+                    payoutEl.innerHTML = `
+                        <p>💰 Выигрыш зачислен на ваш кошелек:</p>
+                        <span class="amount">+${winningsEth} ETH</span>
+                        ${commission > 0 ? `
+                            <p style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
+                                📋 Согласно правилам покерного клуба,<br>
+                                комиссия <strong>10%</strong> (${commissionEth} ETH) перечислена<br>
+                                на адрес покерного клуба
+                            </p>
+                        ` : ''}
+                    `;
+                } else {
+                    contentEl.classList.add('result-lose');
+                    contentEl.classList.remove('result-win');
+                    iconEl.textContent = '😔';
+                    titleEl.textContent = 'Вы проиграли';
+                    
+                    if (winReason === 'my_fold') {
+                        detailsEl.innerHTML = `
+                            <p>Вы сбросили карты (Fold)</p>
+                            <p>Банк уходит сопернику</p>
+                        `;
+                    } else {
+                        detailsEl.innerHTML = `
+                            <p>Соперник выиграл с комбинацией:</p>
+                            <p><strong>${getHandRankName(handRank)}</strong></p>
+                            <p>В следующий раз повезёт больше!</p>
+                        `;
+                    }
+                    
+                    const lostAmount = ethers.formatEther(buyIn);
+                    payoutEl.innerHTML = `
+                        <p>💸 Ваша ставка:</p>
+                        <span class="amount" style="color: #ff6b6b;">-${lostAmount} ETH</span>
+                    `;
+                }
+
+                // Show cards - my cards, opponent cards, and community cards
+                try {
+                    const myCards = await contract.getMyCards(gameId);
+                    const [commCards, revealed] = await contract.getCommunityCards(gameId);
+                    
+                    // Get opponent's cards (if game finished with showdown)
+                    let opponentCardsHtml = '';
+                    if (winReason === 'cards' && playerCount === 2) {
+                        try {
+                            const opponentIdx = myIdx === 0 ? 1 : 0;
+                            const oppCards = await contract.getPlayerCards(gameId, opponentIdx);
+                            opponentCardsHtml = `
+                                <p style="color: #ccc; margin: 15px 0 10px;">Карты соперника:</p>
+                                <div style="display: flex; justify-content: center; gap: 5px;">
+                                    ${renderCard(Number(oppCards[0]))}
+                                    ${renderCard(Number(oppCards[1]))}
+                                </div>
+                            `;
+                        } catch (e) {
+                            console.log('Could not get opponent cards:', e.message);
+                        }
+                    }
+                    
+                    cardsEl.innerHTML = `
+                        <p style="color: #ccc; margin-bottom: 10px;">Ваши карты:</p>
+                        <div style="display: flex; justify-content: center; gap: 5px;">
+                            ${renderCard(Number(myCards[0]))}
+                            ${renderCard(Number(myCards[1]))}
+                        </div>
+                        ${opponentCardsHtml}
+                        <p style="color: #ccc; margin: 15px 0 10px;">Общие карты:</p>
+                        <div style="display: flex; justify-content: center; gap: 5px;">
+                            ${renderCard(Number(commCards[0]))}
+                            ${renderCard(Number(commCards[1]))}
+                            ${renderCard(Number(commCards[2]))}
+                            ${renderCard(Number(commCards[3]))}
+                            ${renderCard(Number(commCards[4]))}
+                        </div>
+                    `;
+                } catch (cardErr) {
+                    console.log('Error loading cards:', cardErr.message);
+                    cardsEl.innerHTML = '';
+                }
+
+                modal.style.display = 'flex';
+                log('🏆 Game #' + gameId + ' finished! ' + (isWinner ? 'You WON!' : 'You lost.'));
+                
+            } catch (error) {
+                console.error('Error showing game result:', error);
+                // Show basic result
+                iconEl.textContent = '🎮';
+                titleEl.textContent = 'Игра завершена';
+                detailsEl.innerHTML = '<p>Не удалось загрузить детали результата.</p>';
+                cardsEl.innerHTML = '';
+                payoutEl.innerHTML = '';
+                modal.style.display = 'flex';
+            }
+        }
+
+        function closeResultModal() {
+            document.getElementById('game-result-modal').style.display = 'none';
+            stopGameUpdates();
+            gameResultShown = false;
+            lastKnownPhase = null;
+        }
 
         function loadCreatedGames() {
             try {
@@ -791,6 +1248,10 @@
                 return;
             }
 
+            // Reset result tracking for new game session
+            gameResultShown = false;
+            lastKnownPhase = null;
+
             try {
                 // Pre-flight validation to avoid revert
                 const sbNum = Number(smallBlind);
@@ -1110,6 +1571,10 @@
 
             if (!requireConnected()) return;
 
+            // Reset result tracking for new game session
+            gameResultShown = false;
+            lastKnownPhase = null;
+
             try {
                 const me = await signer.getAddress();
                 const already = await contract.isPlayerInGame(gameIdNum, me);
@@ -1362,6 +1827,12 @@
                     hintEl.style.display = 'block';
                     hintTextEl.textContent = getActionHint(phase, isMyTurn, deckGenerated);
                 }
+
+                // Check if game just finished (phase 7) - show result modal
+                if (phase === 7 && lastKnownPhase !== 7 && !gameResultShown) {
+                    setTimeout(() => showGameResult(gameId), 500);
+                }
+                lastKnownPhase = phase;
 
             } catch (error) {
                 console.error('Error updating game display:', error);
