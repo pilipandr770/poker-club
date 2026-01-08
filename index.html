@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decentralized Poker</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .game-info { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        .actions { margin: 20px 0; }
+        button { margin: 5px; padding: 10px 15px; }
+        input { margin: 5px; padding: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎰 Decentralized Texas Hold'em Poker</h1>
+
+        <div id="wallet-info">
+            <button id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+            <p id="account">Not connected</p>
+        </div>
+
+        <div class="game-info">
+            <h2>Game Status</h2>
+            <p id="game-status">No active game</p>
+            <p id="last-game" style="margin: 6px 0; color: #333;">No games created yet.</p>
+            <p id="ui-version" style="margin: 6px 0; color: #666;">UI version: 2026-01-08-1</p>
+            <p id="rpc-check" style="margin: 6px 0; color: #666; font-size: 0.9em;"></p>
+            <div id="created-games" style="margin: 10px 0;"></div>
+        </div>
+
+        <div class="actions">
+            <h3>Create Game</h3>
+            <input type="number" id="buyIn" placeholder="Buy-in amount (ETH)" step="0.01">
+            <input type="number" id="smallBlind" placeholder="Small blind" step="0.001">
+            <input type="number" id="bigBlind" placeholder="Big blind" step="0.001">
+            <p id="create-hint" style="margin: 6px 0; color: #333;">
+                Hint: Big blind must be 2× small blind. Buy-in must be at least 20× big blind.
+            </p>
+            <button class="needs-wallet" onclick="createGame()">Create Game</button>
+        </div>
+
+        <div class="actions">
+            <h3>Join Game</h3>
+            <input type="number" id="gameId" placeholder="Game ID">
+            <select id="gameIdSelect" style="margin: 5px; padding: 8px;">
+                <option value="">Select a created game...</option>
+            </select>
+            <p id="join-hint" style="margin: 6px 0; color: #333;">
+                Hint: Enter a game ID to preview the required buy-in.
+            </p>
+            <button class="needs-wallet" onclick="joinGame()">Join Game</button>
+        </div>
+
+        <div class="actions">
+            <h3>Game Actions</h3>
+            <button class="needs-wallet" onclick="startGame()">Start Game</button>
+            <button class="needs-wallet" onclick="fold()">Fold</button>
+            <button class="needs-wallet" onclick="call()">Call</button>
+            <input type="number" id="raiseAmount" placeholder="Raise amount" step="0.01">
+            <button class="needs-wallet" onclick="raise()">Raise</button>
+            <button class="needs-wallet" onclick="getMyCards()">Show My Cards</button>
+        </div>
+
+        <div id="log"></div>
+    </div>
+
+    <script src="./node_modules/ethers/dist/ethers.umd.min.js"></script>
+    <script>
+        let provider;
+        let signer;
+        let contract;
+        let contractAddress = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'; // fallback
+
+        let isConnecting = false;
+
+        function withTimeout(promise, ms, label) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${label}`)), ms))
+            ]);
+        }
+
+        // Surface unexpected browser/runtime errors in the UI log (helps debugging in MetaMask/Edge)
+        window.addEventListener('unhandledrejection', (event) => {
+            const reason = event?.reason;
+            const message = reason?.message || String(reason || 'Unhandled promise rejection');
+
+            // Common non-critical browser/extension autoplay warning in Chromium-based browsers
+            if (/play\(\) request was interrupted by a call to pause\(\)/i.test(message) || /AbortError/i.test(message)) {
+                // Avoid spamming user during normal flows
+                console.warn('Ignored non-critical unhandled rejection:', message);
+                return;
+            }
+
+            try { log('Unhandled promise rejection: ' + message); } catch (_) {}
+        });
+
+        window.addEventListener('error', (event) => {
+            const message = event?.message || 'Unknown error';
+            // Keep it lightweight; main errors already logged in catch blocks
+            try { log('Runtime error: ' + message); } catch (_) {}
+        });
+
+        const HARDHAT_CHAIN_ID = '0x7a69'; // 31337
+
+        async function ensureHardhatNetwork() {
+            const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+            if (currentChainId === HARDHAT_CHAIN_ID) return;
+
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: HARDHAT_CHAIN_ID }]
+                });
+            } catch (switchError) {
+                // MetaMask can return:
+                // - 4902 (unknown chain)
+                // - -32603 with message 'Unrecognized chain ID "0x7a69". Try adding the chain...'
+                const msg = (switchError && (switchError.message || switchError?.data?.message)) || '';
+                const shouldTryAdd =
+                    (switchError && switchError.code === 4902) ||
+                    /unrecognized chain id/i.test(msg) ||
+                    /wallet_addEthereumChain/i.test(msg);
+
+                if (!shouldTryAdd) {
+                    throw switchError;
+                }
+
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [{
+                        chainId: HARDHAT_CHAIN_ID,
+                        chainName: 'Hardhat Localhost',
+                        rpcUrls: ['http://127.0.0.1:8545', 'http://localhost:8545'],
+                        nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }
+                    }]
+                });
+
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: HARDHAT_CHAIN_ID }]
+                });
+            }
+        }
+
+        // Contract ABI (updated)
+        const abi = [
+            "function createGame(uint256 buyIn, uint256 smallBlind, uint256 bigBlind) payable returns (uint256)",
+            "function joinGame(uint256 gameId) payable",
+            "function startGame(uint256 gameId)",
+            "function playerAction(uint256 gameId, uint8 action, uint256 raiseAmount)",
+            "function getMyCards(uint256 gameId) view returns (uint256[2])",
+            "function getGameInfo(uint256 gameId) view returns (uint256 buyIn, uint256 pot, uint256 currentBet, uint8 phase, uint8 playerCount, uint8 activePlayers, uint8 currentPlayer, bool deckGenerated)",
+            "function isPlayerInGame(uint256 gameId, address player) view returns (bool)",
+            "function gameCounter() view returns (uint256)",
+            "event GameCreated(uint256 indexed gameId, uint256 buyIn, uint256 smallBlind, uint256 bigBlind)"
+        ];
+
+        const CREATED_GAMES_STORAGE_KEY = 'poker.createdGames';
+
+        function loadCreatedGames() {
+            try {
+                const raw = localStorage.getItem(CREATED_GAMES_STORAGE_KEY);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function saveCreatedGames(games) {
+            try {
+                localStorage.setItem(CREATED_GAMES_STORAGE_KEY, JSON.stringify(games));
+            } catch (_) {
+                // ignore
+            }
+        }
+
+        function renderCreatedGamesSelect() {
+            const selectEl = document.getElementById('gameIdSelect');
+            if (!selectEl) return;
+
+            const games = loadCreatedGames();
+            // Keep first placeholder option
+            selectEl.innerHTML = '<option value="">Select a created game...</option>';
+
+            for (const g of games) {
+                const opt = document.createElement('option');
+                opt.value = String(g.id);
+                const label = `Game ${g.id} (buyIn ${g.buyInEth} ETH, SB ${g.sbEth}, BB ${g.bbEth})`;
+                opt.textContent = label;
+                selectEl.appendChild(opt);
+            }
+        }
+
+        function renderCreatedGamesList() {
+            const host = document.getElementById('created-games');
+            if (!host) return;
+
+            const games = loadCreatedGames();
+            if (!games.length) {
+                host.innerHTML = '';
+                return;
+            }
+
+            const items = games
+                .map(g => {
+                    const id = String(g.id);
+                    const label = `#${id} (buyIn ${g.buyInEth} ETH, SB ${g.sbEth}, BB ${g.bbEth})`;
+                    return `<button data-gameid="${id}" style="margin: 3px; padding: 6px 10px;">${label}</button>`;
+                })
+                .join('');
+
+            host.innerHTML = `<div style="margin: 6px 0; color: #333;">Created games (click to select):</div>${items}`;
+
+            host.querySelectorAll('button[data-gameid]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-gameid');
+                    const gameIdEl = document.getElementById('gameId');
+                    if (gameIdEl) gameIdEl.value = id;
+                    const selectEl = document.getElementById('gameIdSelect');
+                    if (selectEl) selectEl.value = id;
+                    updateJoinHint();
+                });
+            });
+        }
+
+        function addCreatedGameToList(entry) {
+            const games = loadCreatedGames();
+            if (!games.some(g => String(g.id) === String(entry.id))) {
+                games.unshift(entry);
+                // cap list size
+                if (games.length > 25) games.length = 25;
+                saveCreatedGames(games);
+            }
+            renderCreatedGamesSelect();
+            renderCreatedGamesList();
+        }
+
+        function setWalletDependentEnabled(enabled) {
+            document.querySelectorAll('.needs-wallet').forEach(btn => {
+                btn.disabled = !enabled;
+            });
+        }
+
+        function requireConnected() {
+            if (!provider || !signer || !contract) {
+                log('Connect wallet first');
+                return false;
+            }
+            return true;
+        }
+
+        document.getElementById('gameIdSelect')?.addEventListener('change', (e) => {
+            const v = e.target?.value;
+            if (!v) return;
+            const gameIdEl = document.getElementById('gameId');
+            if (gameIdEl) gameIdEl.value = v;
+            updateJoinHint();
+        });
+
+        // Render any previously created games (localStorage)
+        renderCreatedGamesSelect();
+        renderCreatedGamesList();
+
+        // Default: disable game actions until wallet is connected
+        setWalletDependentEnabled(false);
+
+        async function loadDeploymentAddress() {
+            try {
+                const res = await fetch('./deployments/localhost.json', { cache: 'no-store' });
+                if (!res.ok) return;
+                const json = await res.json();
+                const addr = json?.contracts?.DecentralizedPokerVRF?.address;
+                if (addr && typeof addr === 'string') {
+                    contractAddress = addr;
+                    log('Loaded contract address: ' + contractAddress);
+                }
+            } catch (_) {
+                // ignore and keep fallback
+            }
+        }
+
+        // best-effort load of the latest deployment info
+        loadDeploymentAddress();
+
+        // Diagnostic: test if Hardhat RPC is reachable from the browser
+        async function testRpcConnection() {
+            const rpcCheckEl = document.getElementById('rpc-check');
+            try {
+                const res = await fetch('http://127.0.0.1:8545', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_blockNumber', params: [], id: 1 })
+                });
+                if (res.ok) {
+                    if (rpcCheckEl) rpcCheckEl.textContent = 'RPC check: 127.0.0.1:8545 reachable ✓';
+                } else {
+                    if (rpcCheckEl) rpcCheckEl.textContent = 'RPC check: 127.0.0.1:8545 responded with error';
+                }
+            } catch (e) {
+                if (rpcCheckEl) rpcCheckEl.textContent = 'RPC check: Cannot reach 127.0.0.1:8545 (CORS or node not running)';
+            }
+        }
+        testRpcConnection();
+
+        async function connectWallet() {
+            if (isConnecting) return;
+            isConnecting = true;
+
+            const connectBtn = document.getElementById('connectBtn');
+            if (connectBtn) connectBtn.disabled = true;
+
+            const accountEl = document.getElementById('account');
+            if (accountEl) accountEl.textContent = 'Connecting...';
+
+            // Keep actions disabled until we fully finish setup
+            setWalletDependentEnabled(false);
+
+            console.log('Attempting to connect wallet...');
+            if (typeof window.ethereum !== 'undefined') {
+                console.log('window.ethereum found');
+                try {
+                    console.log('Requesting accounts...');
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    console.log('Accounts requested successfully');
+
+                    // Create provider/signer on whatever network the wallet is currently on.
+                    provider = new ethers.BrowserProvider(window.ethereum);
+                    signer = await provider.getSigner();
+                    contract = new ethers.Contract(contractAddress, abi, signer);
+
+                    // Show *something* immediately so the UI doesn't look stuck.
+                    try {
+                        const address = await withTimeout(signer.getAddress(), 2000, 'getAddress');
+                        if (accountEl) accountEl.textContent = `Connected: ${address} | Checking network...`;
+                    } catch (_) {
+                        // ignore
+                    }
+
+                    // Best-effort switch to Hardhat network; if user rejects, we still stay connected.
+                    try {
+                        await withTimeout(ensureHardhatNetwork(), 5000, 'wallet network switch');
+                    } catch (switchErr) {
+                        const msg = (switchErr && (switchErr.message || switchErr?.data?.message)) || 'Network switch rejected';
+                        log('Note: could not switch network automatically (or it is pending). ' + msg);
+                    }
+
+                    // Re-init after potential chain switch.
+                    provider = new ethers.BrowserProvider(window.ethereum);
+                    signer = await provider.getSigner();
+                    contract = new ethers.Contract(contractAddress, abi, signer);
+
+                    // Refresh status (with internal per-call timeouts). Never fail the whole connect just because status is slow.
+                    await safeUpdateWalletStatus();
+                } catch (error) {
+                    console.error('Error connecting wallet:', error);
+                    const msg = error?.shortMessage || error?.reason || error?.message || 'Unknown error';
+                    log('Error connecting wallet: ' + msg);
+                    if (accountEl) accountEl.textContent = 'Not connected';
+                }
+            } else {
+                console.error('window.ethereum not found');
+                log('MetaMask not detected. Please install MetaMask.');
+                if (accountEl) accountEl.textContent = 'MetaMask not detected';
+            }
+
+            isConnecting = false;
+            if (connectBtn) connectBtn.disabled = false;
+        }
+
+        async function safeUpdateWalletStatus() {
+            try {
+                await updateWalletStatus();
+            } catch (e) {
+                console.error('updateWalletStatus error:', e);
+                const msg = e?.shortMessage || e?.reason || e?.message || 'Unknown error';
+                log('Wallet status error: ' + msg);
+                setWalletDependentEnabled(false);
+            }
+        }
+
+        async function updateWalletStatus() {
+            if (!provider || !signer) return;
+            const accountEl = document.getElementById('account');
+
+            const address = await withTimeout(signer.getAddress(), 10000, 'getAddress');
+
+            // Update UI early so user sees progress even if RPC calls are slow.
+            if (accountEl) accountEl.textContent = `Connected: ${address} | Checking network...`;
+
+            const network = await withTimeout(provider.getNetwork(), 20000, 'getNetwork');
+
+            let balanceEth = 'N/A';
+            try {
+                const balanceWei = await withTimeout(provider.getBalance(address), 20000, 'getBalance');
+                balanceEth = ethers.formatEther(balanceWei);
+            } catch (e) {
+                console.warn('Balance fetch failed:', e);
+                log('MetaMask RPC timeout. Check MetaMask network settings: RPC URL must be http://127.0.0.1:8545');
+                // keep going; balance is not required to consider the wallet connected
+            }
+
+            const isHardhat = network.chainId === 31337n;
+
+            // Only check contract code when on Hardhat; otherwise this call may be confusing/unnecessary.
+            let hasContractCode = false;
+            if (isHardhat) {
+                try {
+                    const code = await withTimeout(provider.getCode(contractAddress), 20000, 'getCode');
+                    hasContractCode = !!(code && code !== '0x');
+                } catch (e) {
+                    console.warn('Code fetch failed:', e);
+                    log('Contract code fetch timeout. Verify Hardhat node is running and MetaMask RPC URL = http://127.0.0.1:8545');
+                    hasContractCode = false;
+                }
+            }
+
+            if (accountEl) {
+                accountEl.textContent = `Connected: ${address} | ChainId: ${network.chainId} | Balance: ${balanceEth}${balanceEth === 'N/A' ? '' : ' ETH'} | Contract: ${isHardhat ? (hasContractCode ? 'OK' : 'MISSING') : 'N/A'} (${contractAddress})`;
+            }
+
+            if (!isHardhat) {
+                log('Connected, but wrong network. Please switch MetaMask to Hardhat Localhost (chainId 31337).');
+                setWalletDependentEnabled(false);
+                return;
+            }
+
+            if (!hasContractCode) {
+                log('WARNING: No contract code at ' + contractAddress + ' on this RPC. Re-run start-and-deploy and refresh this page.');
+                setWalletDependentEnabled(false);
+                return;
+            }
+
+            log('Wallet connected successfully');
+            console.log('Wallet connected:', address);
+
+            setWalletDependentEnabled(true);
+            updateJoinHint();
+        }
+
+        // React to MetaMask changes (account/network)
+        if (typeof window.ethereum !== 'undefined' && window.ethereum?.on) {
+            window.ethereum.on('accountsChanged', async () => {
+                try {
+                    if (provider) {
+                        signer = await provider.getSigner();
+                        contract = new ethers.Contract(contractAddress, abi, signer);
+                        await safeUpdateWalletStatus();
+                    }
+                } catch (_) {
+                    // ignore
+                }
+            });
+            window.ethereum.on('chainChanged', async () => {
+                try {
+                    if (provider) {
+                        await safeUpdateWalletStatus();
+                    }
+                } catch (_) {
+                    // ignore
+                }
+            });
+        }
+
+        async function createGame() {
+            if (!requireConnected()) return;
+            const buyIn = document.getElementById('buyIn').value;
+            const smallBlind = document.getElementById('smallBlind').value;
+            const bigBlind = document.getElementById('bigBlind').value;
+
+            if (!buyIn || !smallBlind || !bigBlind) {
+                log('Please enter buy-in, small blind, and big blind amounts');
+                return;
+            }
+
+            try {
+                // Pre-flight validation to avoid revert
+                const sbNum = Number(smallBlind);
+                const bbNum = Number(bigBlind);
+                const buyInNum = Number(buyIn);
+
+                if (!Number.isFinite(sbNum) || !Number.isFinite(bbNum) || !Number.isFinite(buyInNum) || sbNum <= 0 || bbNum <= 0 || buyInNum <= 0) {
+                    log('Please enter valid positive numbers');
+                    return;
+                }
+
+                // Big blind must be exactly 2x small blind (within a tiny epsilon for decimals)
+                const expectedBb = sbNum * 2;
+                const eps = 1e-12;
+                if (Math.abs(bbNum - expectedBb) > eps) {
+                    log('Invalid blinds: big blind must be exactly 2× small blind');
+                    return;
+                }
+
+                const minBuyIn = bbNum * 20;
+                if (buyInNum + eps < minBuyIn) {
+                    log(`Buy-in too low: must be at least 20×BB = ${minBuyIn} ETH`);
+                    return;
+                }
+
+                console.log('Creating game with:', buyIn, smallBlind, bigBlind);
+
+                // Predict gameId (createGame uses gameCounter++ so the new id is the current counter value)
+                let predictedGameId = null;
+                try {
+                    predictedGameId = await contract.gameCounter();
+                } catch (_) {
+                    // ignore
+                }
+
+                if (predictedGameId !== null && predictedGameId !== undefined) {
+                    const predictedStr = predictedGameId.toString();
+                    const lastEl = document.getElementById('last-game');
+                    if (lastEl) lastEl.textContent = `Creating gameId: ${predictedStr} ...`;
+                    const gameIdEl = document.getElementById('gameId');
+                    if (gameIdEl) gameIdEl.value = predictedStr;
+                    const selectEl = document.getElementById('gameIdSelect');
+                    if (selectEl) selectEl.value = predictedStr;
+                    updateJoinHint();
+                }
+
+                const buyInWei = ethers.parseEther(buyIn);
+                const smallBlindWei = ethers.parseEther(smallBlind);
+                const bigBlindWei = ethers.parseEther(bigBlind);
+                console.log('Parsed values:', buyInWei.toString(), smallBlindWei.toString(), bigBlindWei.toString());
+                const tx = await contract.createGame(
+                    buyInWei,
+                    smallBlindWei,
+                    bigBlindWei,
+                    { value: buyInWei }
+                );
+                log('CreateGame tx sent: ' + tx.hash);
+                const receipt = await tx.wait();
+
+                // Try to extract gameId from GameCreated event
+                let createdGameId = null;
+                try {
+                    for (const l of (receipt?.logs || [])) {
+                        let parsed;
+                        try {
+                            parsed = contract.interface.parseLog(l);
+                        } catch (_) {
+                            continue;
+                        }
+                        if (parsed && parsed.name === 'GameCreated') {
+                            createdGameId = parsed.args.gameId;
+                            break;
+                        }
+                    }
+                } catch (_) {
+                    // ignore
+                }
+
+                if (createdGameId !== null && createdGameId !== undefined) {
+                    const idStr = createdGameId.toString();
+                    const lastEl = document.getElementById('last-game');
+                    if (lastEl) lastEl.textContent = `Last created gameId: ${idStr}`;
+                    const gameIdEl = document.getElementById('gameId');
+                    if (gameIdEl) gameIdEl.value = idStr;
+                    const selectEl = document.getElementById('gameIdSelect');
+                    if (selectEl) selectEl.value = idStr;
+
+                    addCreatedGameToList({
+                        id: idStr,
+                        buyInEth: buyIn,
+                        sbEth: smallBlind,
+                        bbEth: bigBlind,
+                        createdAt: Date.now()
+                    });
+
+                    updateJoinHint();
+                    log('Game created successfully. gameId=' + idStr);
+                } else {
+                    // Guaranteed fallback: after createGame, gameCounter was incremented, so last id = gameCounter - 1
+                    let counterAfter = null;
+                    try {
+                        counterAfter = await contract.gameCounter();
+                    } catch (_) {
+                        // ignore
+                    }
+
+                    let fallbackId = null;
+                    if (counterAfter !== null && counterAfter !== undefined) {
+                        try {
+                            const lastId = BigInt(counterAfter.toString()) - 1n;
+                            if (lastId >= 0n) fallbackId = lastId.toString();
+                        } catch (_) {
+                            // ignore
+                        }
+                    }
+
+                    // If even that failed, fall back to predicted id (best-effort)
+                    if (!fallbackId && predictedGameId !== null && predictedGameId !== undefined) {
+                        fallbackId = predictedGameId.toString();
+                    }
+
+                    if (fallbackId) {
+                        const lastEl = document.getElementById('last-game');
+                        if (lastEl) lastEl.textContent = `Last created gameId: ${fallbackId}`;
+                        const gameIdEl = document.getElementById('gameId');
+                        if (gameIdEl) gameIdEl.value = fallbackId;
+                        const selectEl = document.getElementById('gameIdSelect');
+                        if (selectEl) selectEl.value = fallbackId;
+
+                        addCreatedGameToList({
+                            id: fallbackId,
+                            buyInEth: buyIn,
+                            sbEth: smallBlind,
+                            bbEth: bigBlind,
+                            createdAt: Date.now()
+                        });
+
+                        updateJoinHint();
+                        log('Game created successfully. gameId=' + fallbackId);
+                    } else {
+                        log('Game created successfully (gameId not detected). Try refreshing the page and check deployments/localhost.json.');
+                    }
+                }
+            } catch (error) {
+                console.error('Full error:', error);
+                log('Error creating game: ' + error.message);
+            }
+        }
+
+        function updateCreateHint() {
+            const hintEl = document.getElementById('create-hint');
+            if (!hintEl) return;
+
+            const buyIn = document.getElementById('buyIn')?.value;
+            const smallBlind = document.getElementById('smallBlind')?.value;
+            const bigBlind = document.getElementById('bigBlind')?.value;
+
+            const sbNum = Number(smallBlind);
+            const bbNum = Number(bigBlind);
+            const buyInNum = Number(buyIn);
+
+            const hasNumbers = Number.isFinite(sbNum) && Number.isFinite(bbNum) && Number.isFinite(buyInNum) && sbNum > 0 && bbNum > 0;
+            if (!hasNumbers) {
+                hintEl.textContent = 'Hint: Big blind must be 2× small blind. Buy-in must be at least 20× big blind.';
+                return;
+            }
+
+            const minBuyIn = bbNum * 20;
+            const blindsOk = Math.abs(bbNum - sbNum * 2) <= 1e-12;
+            const buyInOk = Number.isFinite(buyInNum) && buyInNum >= minBuyIn - 1e-12;
+
+            hintEl.textContent = `Rules: BB = 2×SB (${(sbNum * 2)}). Min buy-in = 20×BB = ${minBuyIn} ETH.` +
+                ` Status: blinds ${blindsOk ? 'OK' : 'NOT OK'}, buy-in ${buyInOk ? 'OK' : 'NOT OK'}.`;
+        }
+
+        function formatDecimal(num, maxDecimals = 6) {
+            if (!Number.isFinite(num)) return '';
+            const fixed = num.toFixed(maxDecimals);
+            return fixed.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+        }
+
+        function setInputValueIfChanged(inputEl, nextValue) {
+            if (!inputEl) return;
+            const next = String(nextValue ?? '');
+            if (inputEl.value !== next) inputEl.value = next;
+        }
+
+        let isSyncingBlinds = false;
+        let lastBlindEdited = null; // 'sb' | 'bb'
+
+        function maybeAutoFillBuyInFromBigBlind(bbNum) {
+            const buyInEl = document.getElementById('buyIn');
+            if (!buyInEl) return;
+
+            const minBuyIn = bbNum * 20;
+            const buyInNum = Number(buyInEl.value);
+
+            // Fill if empty. If user entered too-low value, bump it only when the field is not focused.
+            if (!buyInEl.value) {
+                setInputValueIfChanged(buyInEl, formatDecimal(minBuyIn, 6));
+                return;
+            }
+
+            const isFocused = document.activeElement === buyInEl;
+            if (!isFocused && Number.isFinite(buyInNum) && buyInNum > 0 && buyInNum + 1e-12 < minBuyIn) {
+                setInputValueIfChanged(buyInEl, formatDecimal(minBuyIn, 6));
+            }
+        }
+
+        function syncBlindsFromSmallBlind() {
+            if (isSyncingBlinds) return;
+            const sbEl = document.getElementById('smallBlind');
+            const bbEl = document.getElementById('bigBlind');
+            if (!sbEl || !bbEl) return;
+
+            const sbNum = Number(sbEl.value);
+            if (!Number.isFinite(sbNum) || sbNum <= 0) return;
+
+            isSyncingBlinds = true;
+            const bbNum = sbNum * 2;
+            setInputValueIfChanged(bbEl, formatDecimal(bbNum, 6));
+            maybeAutoFillBuyInFromBigBlind(bbNum);
+            isSyncingBlinds = false;
+        }
+
+        function syncBlindsFromBigBlind() {
+            if (isSyncingBlinds) return;
+            const sbEl = document.getElementById('smallBlind');
+            const bbEl = document.getElementById('bigBlind');
+            if (!sbEl || !bbEl) return;
+
+            const bbNum = Number(bbEl.value);
+            if (!Number.isFinite(bbNum) || bbNum <= 0) return;
+
+            isSyncingBlinds = true;
+            const sbNum = bbNum / 2;
+            setInputValueIfChanged(sbEl, formatDecimal(sbNum, 6));
+            maybeAutoFillBuyInFromBigBlind(bbNum);
+            isSyncingBlinds = false;
+        }
+
+        document.getElementById('buyIn')?.addEventListener('input', updateCreateHint);
+        document.getElementById('smallBlind')?.addEventListener('input', () => {
+            lastBlindEdited = 'sb';
+            syncBlindsFromSmallBlind();
+            updateCreateHint();
+        });
+        document.getElementById('bigBlind')?.addEventListener('input', () => {
+            lastBlindEdited = 'bb';
+            syncBlindsFromBigBlind();
+            updateCreateHint();
+        });
+        updateCreateHint();
+
+        let joinHintTimer = null;
+
+        async function updateJoinHint() {
+            const hintEl = document.getElementById('join-hint');
+            const gameIdEl = document.getElementById('gameId');
+            if (!hintEl || !gameIdEl) return;
+
+            const gameIdRaw = gameIdEl.value;
+            if (!gameIdRaw) {
+                hintEl.textContent = 'Hint: Enter a game ID to preview the required buy-in.';
+                return;
+            }
+
+            if (!contract) {
+                hintEl.textContent = 'Connect wallet to preview required buy-in.';
+                return;
+            }
+
+            try {
+                hintEl.textContent = 'Loading game info...';
+                const info = await contract.getGameInfo(gameIdRaw);
+                const buyInEth = ethers.formatEther(info.buyIn);
+                hintEl.textContent = `Required buy-in for Game ${gameIdRaw}: ${buyInEth} ETH`;
+            } catch (e) {
+                hintEl.textContent = 'Could not load game info for this Game ID.';
+            }
+        }
+
+        document.getElementById('gameId')?.addEventListener('input', () => {
+            if (joinHintTimer) clearTimeout(joinHintTimer);
+            joinHintTimer = setTimeout(updateJoinHint, 250);
+        });
+
+        function getValidatedGameId() {
+            const gameIdRaw = document.getElementById('gameId')?.value;
+            if (!gameIdRaw) {
+                log('Please enter game ID');
+                return null;
+            }
+
+            const gameIdNum = Number(gameIdRaw);
+            if (!Number.isFinite(gameIdNum) || gameIdNum < 0 || !Number.isInteger(gameIdNum)) {
+                log('Game ID must be a non-negative integer');
+                return null;
+            }
+            return gameIdNum;
+        }
+
+        async function joinGame() {
+            const gameIdRaw = document.getElementById('gameId').value;
+            if (!gameIdRaw) {
+                log('Please enter game ID');
+                return;
+            }
+
+            const gameIdNum = Number(gameIdRaw);
+            if (!Number.isFinite(gameIdNum) || gameIdNum < 0 || !Number.isInteger(gameIdNum)) {
+                log('Game ID must be a non-negative integer');
+                return;
+            }
+
+            if (!requireConnected()) return;
+
+            try {
+                const me = await signer.getAddress();
+                const already = await contract.isPlayerInGame(gameIdNum, me);
+                if (already) {
+                    log('You are already in this game with the currently connected wallet. Switch MetaMask account to join as another player.');
+                    return;
+                }
+
+                console.log('Joining game:', gameIdNum);
+                const gameInfo = await contract.getGameInfo(gameIdNum);
+                const tx = await contract.joinGame(gameIdNum, { value: gameInfo.buyIn });
+                await tx.wait();
+                log('Joined game successfully');
+            } catch (error) {
+                console.error('joinGame error:', error);
+                const msg = error?.shortMessage || error?.reason || error?.message || 'Unknown error';
+                log('Error joining game: ' + msg);
+            }
+        }
+
+        async function startGame() {
+            if (!requireConnected()) return;
+            const gameId = getValidatedGameId();
+            if (gameId === null) return;
+            try {
+                const tx = await contract.startGame(gameId);
+                await tx.wait();
+                log('Game started');
+            } catch (error) {
+                log('Error starting game: ' + error.message);
+            }
+        }
+
+        async function fold() {
+            if (!requireConnected()) return;
+            const gameId = getValidatedGameId();
+            if (gameId === null) return;
+            try {
+                const tx = await contract.playerAction(gameId, 1, 0); // 1 = Fold
+                await tx.wait();
+                log('Folded');
+            } catch (error) {
+                log('Error folding: ' + error.message);
+            }
+        }
+
+        async function call() {
+            if (!requireConnected()) return;
+            const gameId = getValidatedGameId();
+            if (gameId === null) return;
+            try {
+                const tx = await contract.playerAction(gameId, 3, 0); // 3 = Call
+                await tx.wait();
+                log('Called');
+            } catch (error) {
+                log('Error calling: ' + error.message);
+            }
+        }
+
+        async function raise() {
+            if (!requireConnected()) return;
+            const gameId = getValidatedGameId();
+            if (gameId === null) return;
+
+            const amount = document.getElementById('raiseAmount')?.value;
+            if (!amount) {
+                log('Please enter raise amount');
+                return;
+            }
+
+            const amountNum = Number(amount);
+            if (!Number.isFinite(amountNum) || amountNum <= 0) {
+                log('Raise amount must be a positive number');
+                return;
+            }
+            try {
+                const tx = await contract.playerAction(gameId, 4, ethers.parseEther(amount)); // 4 = Raise
+                await tx.wait();
+                log('Raised');
+            } catch (error) {
+                log('Error raising: ' + error.message);
+            }
+        }
+
+        async function getMyCards() {
+            if (!requireConnected()) return;
+            const gameId = getValidatedGameId();
+            if (gameId === null) return;
+            try {
+                const cards = await contract.getMyCards(gameId);
+                log('Your cards: ' + cards.map(c => c.toString()).join(', '));
+            } catch (error) {
+                log('Error getting cards: ' + error.message);
+            }
+        }
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += '<p>' + new Date().toLocaleTimeString() + ': ' + message + '</p>';
+        }
+    </script>
+</body>
+</html>
