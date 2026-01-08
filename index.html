@@ -344,6 +344,15 @@
             "event GameCreated(uint256 indexed gameId, uint256 buyIn, uint256 smallBlind, uint256 bigBlind)"
         ];
 
+        // Mock VRF ABI (for local testing)
+        const mockVrfAbi = [
+            "function fulfillLastRequest()",
+            "function lastRequestId() view returns (uint256)"
+        ];
+
+        let mockVrfContract = null;
+        let mockVrfAddress = null;
+
         // Card conversion utilities
         const SUITS = ['♠', '♥', '♦', '♣'];
         const SUIT_NAMES = ['Spades', 'Hearts', 'Diamonds', 'Clubs'];
@@ -577,6 +586,12 @@
                 if (addr && typeof addr === 'string') {
                     contractAddress = addr;
                     log('Loaded contract address: ' + contractAddress);
+                }
+                // Load Mock VRF address for local testing
+                const vrfAddr = json?.contracts?.MockVRFCoordinatorV2Plus?.address;
+                if (vrfAddr && typeof vrfAddr === 'string') {
+                    mockVrfAddress = vrfAddr;
+                    console.log('Loaded Mock VRF address: ' + mockVrfAddress);
                 }
             } catch (_) {
                 // ignore and keep fallback
@@ -1122,12 +1137,37 @@
             const gameId = getValidatedGameId();
             if (gameId === null) return;
             try {
+                log('Starting game...');
                 const tx = await contract.startGame(gameId);
                 await tx.wait();
-                log('Game started');
+                log('Game started, requesting VRF...');
+                
+                // For local testing: automatically fulfill VRF request
+                await fulfillVRF();
+                
                 startGameUpdates(gameId);
             } catch (error) {
                 log('Error starting game: ' + error.message);
+            }
+        }
+
+        async function fulfillVRF() {
+            if (!mockVrfAddress) {
+                log('Mock VRF address not loaded - cannot auto-fulfill');
+                return false;
+            }
+            try {
+                if (!mockVrfContract) {
+                    mockVrfContract = new ethers.Contract(mockVrfAddress, mockVrfAbi, signer);
+                }
+                log('Fulfilling VRF request...');
+                const tx = await mockVrfContract.fulfillLastRequest();
+                await tx.wait();
+                log('VRF fulfilled - cards dealt!');
+                return true;
+            } catch (error) {
+                log('VRF fulfill error: ' + error.message);
+                return false;
             }
         }
 

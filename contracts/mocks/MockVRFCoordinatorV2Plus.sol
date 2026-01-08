@@ -5,11 +5,13 @@ pragma solidity ^0.8.19;
  * @title MockVRFCoordinatorV2Plus
  * @notice Mock VRF Coordinator for local testing
  * @dev Allows manual fulfillment of randomness requests for testing
+ *      Can also auto-fulfill requests immediately for convenience
  */
 contract MockVRFCoordinatorV2Plus {
     
     uint256 private nonce;
     uint256 public lastRequestId;
+    bool public autoFulfill = true; // Auto-fulfill for easy local testing
     
     struct Request {
         address consumer;
@@ -41,6 +43,7 @@ contract MockVRFCoordinatorV2Plus {
     /**
      * @notice Request random words
      * @dev Stores the request and returns a unique request ID
+     *      Auto-fulfill is disabled by default - call fulfillLastRequest() separately
      */
     function requestRandomWords(
         bytes32 keyHash,
@@ -77,7 +80,26 @@ contract MockVRFCoordinatorV2Plus {
             msg.sender
         );
         
+        // NOTE: Auto-fulfill removed - must be called separately after the transaction
+        // to allow the consumer contract to set up its mappings first
+        
         return requestId;
+    }
+    
+    /**
+     * @notice Fulfill the last request automatically (call after requestRandomWords tx completes)
+     */
+    function fulfillLastRequest() external {
+        require(lastRequestId != 0, "No pending request");
+        require(!requests[lastRequestId].fulfilled, "Already fulfilled");
+        _fulfillWithSeed(lastRequestId, uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, nonce))));
+    }
+    
+    /**
+     * @notice Toggle auto-fulfill mode (not used in current implementation)
+     */
+    function setAutoFulfill(bool _autoFulfill) external {
+        autoFulfill = _autoFulfill;
     }
     
     /**
@@ -130,6 +152,13 @@ contract MockVRFCoordinatorV2Plus {
         uint256 requestId,
         uint256 seed
     ) external {
+        _fulfillWithSeed(requestId, seed);
+    }
+    
+    /**
+     * @notice Internal function to fulfill with seed
+     */
+    function _fulfillWithSeed(uint256 requestId, uint256 seed) internal {
         Request storage request = requests[requestId];
         require(request.consumer != address(0), "Request not found");
         require(!request.fulfilled, "Already fulfilled");
