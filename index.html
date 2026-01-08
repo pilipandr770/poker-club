@@ -5,12 +5,142 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Decentralized Poker</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .game-info { background: #f0f0f0; padding: 10px; margin: 10px 0; }
-        .actions { margin: 20px 0; }
-        button { margin: 5px; padding: 10px 15px; }
-        input { margin: 5px; padding: 8px; }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1a4d1a; color: white; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .game-info { background: #2d5a2d; padding: 15px; margin: 10px 0; border-radius: 10px; }
+        .actions { margin: 20px 0; background: #2d5a2d; padding: 15px; border-radius: 10px; }
+        button { margin: 5px; padding: 10px 15px; cursor: pointer; border: none; border-radius: 5px; background: #4CAF50; color: white; font-weight: bold; }
+        button:hover { background: #45a049; }
+        button:disabled { background: #666; cursor: not-allowed; }
+        input, select { margin: 5px; padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+        h1 { text-align: center; color: #ffd700; }
+        h2, h3 { color: #90EE90; }
+        
+        /* Poker table */
+        .poker-table {
+            background: linear-gradient(145deg, #0d4d0d, #1a6b1a);
+            border: 8px solid #8B4513;
+            border-radius: 150px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+        }
+        
+        /* Cards */
+        .cards-section {
+            text-align: center;
+            margin: 15px 0;
+        }
+        .card {
+            display: inline-block;
+            width: 60px;
+            height: 85px;
+            background: white;
+            border-radius: 8px;
+            margin: 5px;
+            font-size: 18px;
+            font-weight: bold;
+            line-height: 85px;
+            color: black;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        .card.red { color: #cc0000; }
+        .card.black { color: #000; }
+        .card.hidden {
+            background: linear-gradient(135deg, #1a237e, #3949ab);
+            color: transparent;
+        }
+        .card.hidden::after {
+            content: "🂠";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 40px;
+            color: white;
+        }
+        .card-value {
+            position: absolute;
+            top: 5px;
+            left: 8px;
+            font-size: 14px;
+            line-height: 1;
+        }
+        .card-suit {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 28px;
+            line-height: 1;
+        }
+        .card-value-bottom {
+            position: absolute;
+            bottom: 5px;
+            right: 8px;
+            font-size: 14px;
+            line-height: 1;
+            transform: rotate(180deg);
+        }
+        
+        /* Game phases */
+        .phase-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        .phase {
+            padding: 8px 15px;
+            background: #333;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .phase.active {
+            background: #ffd700;
+            color: black;
+            font-weight: bold;
+        }
+        
+        /* Player info */
+        .player-info {
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        
+        /* Hand strength */
+        .hand-strength {
+            background: linear-gradient(90deg, #ffd700, #ff8c00);
+            color: black;
+            padding: 10px 20px;
+            border-radius: 25px;
+            display: inline-block;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        /* Action hints */
+        .action-hint {
+            background: rgba(255,215,0,0.2);
+            border-left: 4px solid #ffd700;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        #log { 
+            background: rgba(0,0,0,0.5); 
+            padding: 15px; 
+            margin-top: 20px; 
+            border-radius: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        #log p { margin: 5px 0; font-size: 13px; color: #90EE90; }
     </style>
 </head>
 <body>
@@ -25,10 +155,63 @@
         <div class="game-info">
             <h2>Game Status</h2>
             <p id="game-status">No active game</p>
-            <p id="last-game" style="margin: 6px 0; color: #333;">No games created yet.</p>
-            <p id="ui-version" style="margin: 6px 0; color: #666;">UI version: 2026-01-08-1</p>
-            <p id="rpc-check" style="margin: 6px 0; color: #666; font-size: 0.9em;"></p>
+            <p id="last-game" style="margin: 6px 0;">No games created yet.</p>
+            <p id="ui-version" style="margin: 6px 0; color: #aaa;">UI version: 2026-01-08-2</p>
+            <p id="rpc-check" style="margin: 6px 0; color: #aaa; font-size: 0.9em;"></p>
             <div id="created-games" style="margin: 10px 0;"></div>
+        </div>
+
+        <!-- Poker Table -->
+        <div class="poker-table" id="poker-table" style="display: none;">
+            <!-- Phase Indicator -->
+            <div class="phase-indicator" id="phase-indicator">
+                <span class="phase" data-phase="0">Waiting</span>
+                <span class="phase" data-phase="1">VRF</span>
+                <span class="phase" data-phase="2">Pre-Flop</span>
+                <span class="phase" data-phase="3">Flop</span>
+                <span class="phase" data-phase="4">Turn</span>
+                <span class="phase" data-phase="5">River</span>
+                <span class="phase" data-phase="6">Showdown</span>
+            </div>
+
+            <!-- Community Cards -->
+            <div class="cards-section">
+                <h3>Community Cards</h3>
+                <div id="community-cards">
+                    <div class="card hidden"></div>
+                    <div class="card hidden"></div>
+                    <div class="card hidden"></div>
+                    <div class="card hidden"></div>
+                    <div class="card hidden"></div>
+                </div>
+            </div>
+
+            <!-- Pot Info -->
+            <div class="player-info" style="text-align: center;">
+                <span style="font-size: 24px;">💰</span>
+                <span id="pot-display" style="font-size: 20px; color: #ffd700;">Pot: 0 ETH</span>
+                <span style="margin-left: 20px;">Current Bet: <span id="current-bet-display">0 ETH</span></span>
+            </div>
+
+            <!-- My Cards -->
+            <div class="cards-section">
+                <h3>Your Cards</h3>
+                <div id="my-cards">
+                    <div class="card hidden"></div>
+                    <div class="card hidden"></div>
+                </div>
+                <div id="hand-strength-display"></div>
+            </div>
+
+            <!-- Action Hint -->
+            <div class="action-hint" id="action-hint" style="display: none;">
+                <strong>💡 Hint:</strong> <span id="hint-text">Waiting for game to start...</span>
+            </div>
+
+            <!-- Turn Indicator -->
+            <div class="player-info" style="text-align: center;">
+                <p id="turn-indicator" style="font-size: 18px;">Waiting for players...</p>
+            </div>
         </div>
 
         <div class="actions">
@@ -36,8 +219,8 @@
             <input type="number" id="buyIn" placeholder="Buy-in amount (ETH)" step="0.01">
             <input type="number" id="smallBlind" placeholder="Small blind" step="0.001">
             <input type="number" id="bigBlind" placeholder="Big blind" step="0.001">
-            <p id="create-hint" style="margin: 6px 0; color: #333;">
-                Hint: Big blind must be 2× small blind. Buy-in must be at least 20× big blind.
+            <p id="create-hint" style="margin: 6px 0; color: #ccc;">
+                Hint: Big blind must be 2x small blind. Buy-in must be at least 20x big blind.
             </p>
             <button class="needs-wallet" onclick="createGame()">Create Game</button>
         </div>
@@ -146,18 +329,133 @@
             }
         }
 
-        // Contract ABI (updated)
+        // Contract ABI (updated with card functions)
         const abi = [
             "function createGame(uint256 buyIn, uint256 smallBlind, uint256 bigBlind) payable returns (uint256)",
             "function joinGame(uint256 gameId) payable",
             "function startGame(uint256 gameId)",
             "function playerAction(uint256 gameId, uint8 action, uint256 raiseAmount)",
-            "function getMyCards(uint256 gameId) view returns (uint256[2])",
+            "function getMyCards(uint256 gameId) view returns (uint8[2])",
+            "function getCommunityCards(uint256 gameId) view returns (uint8[5], uint8 revealed)",
             "function getGameInfo(uint256 gameId) view returns (uint256 buyIn, uint256 pot, uint256 currentBet, uint8 phase, uint8 playerCount, uint8 activePlayers, uint8 currentPlayer, bool deckGenerated)",
             "function isPlayerInGame(uint256 gameId, address player) view returns (bool)",
             "function gameCounter() view returns (uint256)",
+            "function playerIndex(uint256 gameId, address player) view returns (uint8)",
             "event GameCreated(uint256 indexed gameId, uint256 buyIn, uint256 smallBlind, uint256 bigBlind)"
         ];
+
+        // Card conversion utilities
+        const SUITS = ['♠', '♥', '♦', '♣'];
+        const SUIT_NAMES = ['Spades', 'Hearts', 'Diamonds', 'Clubs'];
+        const VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+        
+        function cardToString(cardNum) {
+            if (cardNum === 0 || cardNum === undefined || cardNum === null) return null;
+            const adjustedNum = Number(cardNum);
+            if (adjustedNum < 0 || adjustedNum > 51) return null;
+            const suit = Math.floor(adjustedNum / 13);
+            const value = adjustedNum % 13;
+            return { 
+                display: VALUES[value] + SUITS[suit],
+                value: VALUES[value],
+                suit: SUITS[suit],
+                suitName: SUIT_NAMES[suit],
+                isRed: suit === 1 || suit === 2 // Hearts or Diamonds
+            };
+        }
+
+        function renderCard(cardNum, hidden = false) {
+            if (hidden || cardNum === null || cardNum === undefined) {
+                return '<div class="card hidden"></div>';
+            }
+            const card = cardToString(cardNum);
+            if (!card) return '<div class="card hidden"></div>';
+            
+            const colorClass = card.isRed ? 'red' : 'black';
+            return `
+                <div class="card ${colorClass}">
+                    <span class="card-value">${card.value}${card.suit}</span>
+                    <span class="card-suit">${card.suit}</span>
+                    <span class="card-value-bottom">${card.value}${card.suit}</span>
+                </div>
+            `;
+        }
+
+        function getPhaseNameRu(phase) {
+            const names = [
+                'Ожидание игроков',
+                'Запрос VRF...',
+                'Pre-Flop (торги)',
+                'Flop (3 карты)',
+                'Turn (4-я карта)',
+                'River (5-я карта)',
+                'Showdown (вскрытие)',
+                'Игра завершена'
+            ];
+            return names[phase] || 'Неизвестно';
+        }
+
+        function getActionHint(phase, isMyTurn, deckGenerated) {
+            if (!deckGenerated && phase >= 2) {
+                return '⏳ Ожидание генерации колоды (VRF)...';
+            }
+            if (phase === 0) return '⏳ Ожидание присоединения других игроков. Нужно минимум 2 игрока.';
+            if (phase === 1) return '⏳ Запрашиваем случайные числа у VRF оракула...';
+            if (phase === 7) return '🏆 Игра завершена!';
+            if (phase === 6) return '🃏 Showdown! Покажите карты или сбросьте.';
+            
+            if (!isMyTurn) return '⏳ Ожидайте свою очередь...';
+            
+            return '🎯 Ваш ход! Выберите действие: Fold (сброс), Call (уравнять) или Raise (повысить).';
+        }
+
+        function evaluateHandStrength(myCards, communityCards) {
+            // Simple hand evaluation hint (not full poker logic, just basic guidance)
+            if (!myCards || myCards.length < 2) return null;
+            
+            const card1 = cardToString(myCards[0]);
+            const card2 = cardToString(myCards[1]);
+            if (!card1 || !card2) return null;
+
+            const v1 = VALUES.indexOf(card1.value);
+            const v2 = VALUES.indexOf(card2.value);
+            const highCard = Math.max(v1, v2);
+            const isPair = v1 === v2;
+            const isSuited = card1.suitName === card2.suitName;
+            const isConnected = Math.abs(v1 - v2) === 1;
+            
+            let strength = '';
+            let hint = '';
+            
+            if (isPair) {
+                if (highCard >= 10) { strength = '🔥 Сильная пара!'; hint = 'У вас высокая пара - играйте агрессивно!'; }
+                else if (highCard >= 6) { strength = '👍 Средняя пара'; hint = 'Хорошая рука, но будьте осторожны.'; }
+                else { strength = '🤔 Слабая пара'; hint = 'Маленькая пара - зависит от флопа.'; }
+            } else if (highCard >= 11 && (v1 >= 9 || v2 >= 9)) {
+                strength = '💪 Высокие карты';
+                hint = 'Сильные карты. Можно играть.';
+            } else if (isSuited && isConnected) {
+                strength = '🌈 Suited connectors';
+                hint = 'Потенциал для флеша или стрита!';
+            } else if (isSuited) {
+                strength = '♠ Одномастные';
+                hint = 'Есть шанс собрать флеш.';
+            } else if (isConnected) {
+                strength = '↔️ Коннекторы';
+                hint = 'Потенциал для стрита.';
+            } else if (highCard >= 10) {
+                strength = '👌 Есть высокая';
+                hint = 'Одна высокая карта - осторожно.';
+            } else {
+                strength = '❌ Слабые карты';
+                hint = 'Слабая рука. Рассмотрите fold.';
+            }
+
+            return { strength, hint };
+        }
+
+        let currentGameId = null;
+        let gameUpdateInterval = null;
 
         const CREATED_GAMES_STORAGE_KEY = 'poker.createdGames';
 
@@ -575,6 +873,7 @@
 
                     updateJoinHint();
                     log('Game created successfully. gameId=' + idStr);
+                    startGameUpdates(Number(idStr));
                 } else {
                     // Guaranteed fallback: after createGame, gameCounter was incremented, so last id = gameCounter - 1
                     let counterAfter = null;
@@ -617,6 +916,7 @@
 
                         updateJoinHint();
                         log('Game created successfully. gameId=' + fallbackId);
+                        startGameUpdates(Number(fallbackId));
                     } else {
                         log('Game created successfully (gameId not detected). Try refreshing the page and check deployments/localhost.json.');
                     }
@@ -799,7 +1099,8 @@
                 const me = await signer.getAddress();
                 const already = await contract.isPlayerInGame(gameIdNum, me);
                 if (already) {
-                    log('You are already in this game with the currently connected wallet. Switch MetaMask account to join as another player.');
+                    log('You are already in this game. Starting game view...');
+                    startGameUpdates(gameIdNum);
                     return;
                 }
 
@@ -808,6 +1109,7 @@
                 const tx = await contract.joinGame(gameIdNum, { value: gameInfo.buyIn });
                 await tx.wait();
                 log('Joined game successfully');
+                startGameUpdates(gameIdNum);
             } catch (error) {
                 console.error('joinGame error:', error);
                 const msg = error?.shortMessage || error?.reason || error?.message || 'Unknown error';
@@ -823,6 +1125,7 @@
                 const tx = await contract.startGame(gameId);
                 await tx.wait();
                 log('Game started');
+                startGameUpdates(gameId);
             } catch (error) {
                 log('Error starting game: ' + error.message);
             }
@@ -836,6 +1139,7 @@
                 const tx = await contract.playerAction(gameId, 1, 0); // 1 = Fold
                 await tx.wait();
                 log('Folded');
+                if (currentGameId !== null) updateGameDisplay(currentGameId);
             } catch (error) {
                 log('Error folding: ' + error.message);
             }
@@ -849,6 +1153,7 @@
                 const tx = await contract.playerAction(gameId, 3, 0); // 3 = Call
                 await tx.wait();
                 log('Called');
+                if (currentGameId !== null) updateGameDisplay(currentGameId);
             } catch (error) {
                 log('Error calling: ' + error.message);
             }
@@ -873,7 +1178,8 @@
             try {
                 const tx = await contract.playerAction(gameId, 4, ethers.parseEther(amount)); // 4 = Raise
                 await tx.wait();
-                log('Raised');
+                log('Raised to ' + amount + ' ETH');
+                if (currentGameId !== null) updateGameDisplay(currentGameId);
             } catch (error) {
                 log('Error raising: ' + error.message);
             }
@@ -885,15 +1191,161 @@
             if (gameId === null) return;
             try {
                 const cards = await contract.getMyCards(gameId);
-                log('Your cards: ' + cards.map(c => c.toString()).join(', '));
+                const card1 = cardToString(Number(cards[0]));
+                const card2 = cardToString(Number(cards[1]));
+                if (card1 && card2) {
+                    log(`Your cards: ${card1.display} ${card2.display}`);
+                } else {
+                    log('Cards not dealt yet or invalid.');
+                }
+                // Also update the display
+                await updateGameDisplay(gameId);
             } catch (error) {
                 log('Error getting cards: ' + error.message);
+            }
+        }
+
+        async function updateGameDisplay(gameId) {
+            if (!contract) return;
+            
+            try {
+                const info = await contract.getGameInfo(gameId);
+                const phase = Number(info.phase);
+                const deckGenerated = info.deckGenerated;
+                const pot = ethers.formatEther(info.pot);
+                const currentBet = ethers.formatEther(info.currentBet);
+                const playerCount = Number(info.playerCount);
+                const activePlayers = Number(info.activePlayers);
+                const currentPlayer = Number(info.currentPlayer);
+
+                // Show the poker table
+                const pokerTable = document.getElementById('poker-table');
+                if (pokerTable) pokerTable.style.display = 'block';
+
+                // Update phase indicators
+                document.querySelectorAll('.phase').forEach(el => {
+                    const p = Number(el.dataset.phase);
+                    el.classList.toggle('active', p === phase);
+                });
+
+                // Update pot display
+                document.getElementById('pot-display').textContent = `Pot: ${pot} ETH`;
+                document.getElementById('current-bet-display').textContent = `${currentBet} ETH`;
+
+                // Update game status text
+                document.getElementById('game-status').textContent = 
+                    `Phase: ${getPhaseNameRu(phase)} | Players: ${activePlayers}/${playerCount}`;
+
+                // Check if it's my turn
+                let isMyTurn = false;
+                let myIdx = -1;
+                try {
+                    const me = await signer.getAddress();
+                    const inGame = await contract.isPlayerInGame(gameId, me);
+                    if (inGame) {
+                        myIdx = Number(await contract.playerIndex(gameId, me));
+                        isMyTurn = (myIdx === currentPlayer) && (phase >= 2 && phase <= 5);
+                    }
+                } catch (_) {}
+
+                // Update turn indicator
+                const turnEl = document.getElementById('turn-indicator');
+                if (phase >= 2 && phase <= 5) {
+                    if (isMyTurn) {
+                        turnEl.innerHTML = '🎯 <strong style="color: #ffd700;">ВАШ ХОД!</strong>';
+                    } else {
+                        turnEl.textContent = `Ход игрока #${currentPlayer + 1}`;
+                    }
+                } else if (phase === 6) {
+                    turnEl.textContent = '🃏 Showdown - вскрытие карт';
+                } else if (phase === 7) {
+                    turnEl.textContent = '🏆 Игра завершена';
+                } else {
+                    turnEl.textContent = `Ожидание (${playerCount} игроков присоединилось)`;
+                }
+
+                // Update my cards
+                if (deckGenerated && phase >= 2) {
+                    try {
+                        const myCards = await contract.getMyCards(gameId);
+                        const card1 = Number(myCards[0]);
+                        const card2 = Number(myCards[1]);
+                        
+                        document.getElementById('my-cards').innerHTML = 
+                            renderCard(card1) + renderCard(card2);
+
+                        // Evaluate hand strength
+                        const evaluation = evaluateHandStrength([card1, card2], []);
+                        if (evaluation) {
+                            document.getElementById('hand-strength-display').innerHTML = 
+                                `<div class="hand-strength">${evaluation.strength}</div>
+                                 <p style="color: #ccc; margin-top: 5px;">${evaluation.hint}</p>`;
+                        }
+                    } catch (e) {
+                        document.getElementById('my-cards').innerHTML = 
+                            '<div class="card hidden"></div><div class="card hidden"></div>';
+                        document.getElementById('hand-strength-display').innerHTML = '';
+                    }
+                } else {
+                    document.getElementById('my-cards').innerHTML = 
+                        '<div class="card hidden"></div><div class="card hidden"></div>';
+                    document.getElementById('hand-strength-display').innerHTML = 
+                        '<p style="color: #888;">Карты будут раздены после старта игры</p>';
+                }
+
+                // Update community cards
+                if (phase >= 3) {
+                    try {
+                        const [commCards, revealed] = await contract.getCommunityCards(gameId);
+                        const revealedCount = Number(revealed);
+                        let html = '';
+                        for (let i = 0; i < 5; i++) {
+                            if (i < revealedCount) {
+                                html += renderCard(Number(commCards[i]));
+                            } else {
+                                html += '<div class="card hidden"></div>';
+                            }
+                        }
+                        document.getElementById('community-cards').innerHTML = html;
+                    } catch (_) {
+                        // Keep hidden cards
+                    }
+                } else {
+                    document.getElementById('community-cards').innerHTML = 
+                        '<div class="card hidden"></div>'.repeat(5);
+                }
+
+                // Update action hint
+                const hintEl = document.getElementById('action-hint');
+                const hintTextEl = document.getElementById('hint-text');
+                if (hintEl && hintTextEl) {
+                    hintEl.style.display = 'block';
+                    hintTextEl.textContent = getActionHint(phase, isMyTurn, deckGenerated);
+                }
+
+            } catch (error) {
+                console.error('Error updating game display:', error);
+            }
+        }
+
+        function startGameUpdates(gameId) {
+            stopGameUpdates();
+            currentGameId = gameId;
+            updateGameDisplay(gameId);
+            gameUpdateInterval = setInterval(() => updateGameDisplay(gameId), 3000);
+        }
+
+        function stopGameUpdates() {
+            if (gameUpdateInterval) {
+                clearInterval(gameUpdateInterval);
+                gameUpdateInterval = null;
             }
         }
 
         function log(message) {
             const logDiv = document.getElementById('log');
             logDiv.innerHTML += '<p>' + new Date().toLocaleTimeString() + ': ' + message + '</p>';
+            logDiv.scrollTop = logDiv.scrollHeight;
         }
     </script>
 </body>
