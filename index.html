@@ -353,15 +353,23 @@
         </p>
 
         <div id="wallet-info">
-            <button id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <button id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+                <select id="networkSelect" onchange="switchNetwork()" style="padding: 8px; border-radius: 5px;">
+                    <option value="localhost">🔧 Localhost (Dev)</option>
+                    <option value="polygonAmoy">🧪 Polygon Amoy (Testnet)</option>
+                    <option value="polygon">💎 Polygon (Mainnet)</option>
+                </select>
+            </div>
             <p id="account">Not connected</p>
+            <p id="network-status" style="color: #aaa; font-size: 0.9em;"></p>
         </div>
 
         <div class="game-info">
             <h2>Game Status</h2>
             <p id="game-status">No active game</p>
             <p id="last-game" style="margin: 6px 0;">No games created yet.</p>
-            <p id="ui-version" style="margin: 6px 0; color: #aaa;">UI version: 2026-01-08-3</p>
+            <p id="ui-version" style="margin: 6px 0; color: #aaa;">UI version: 2026-01-09-render</p>
             <p id="rpc-check" style="margin: 6px 0; color: #aaa; font-size: 0.9em;"></p>
             <div id="created-games" style="margin: 10px 0;"></div>
         </div>
@@ -555,6 +563,38 @@
         let signer;
         let contract;
         let contractAddress = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'; // fallback
+        let currentNetwork = 'localhost';
+
+        // Network configurations
+        const NETWORKS = {
+            localhost: {
+                name: 'Hardhat Localhost',
+                chainId: '0x7a69', // 31337
+                chainIdDecimal: 31337,
+                rpcUrls: ['http://127.0.0.1:8545'],
+                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                blockExplorer: null,
+                deploymentFile: 'localhost.json'
+            },
+            polygonAmoy: {
+                name: 'Polygon Amoy Testnet',
+                chainId: '0x13882', // 80002
+                chainIdDecimal: 80002,
+                rpcUrls: ['https://rpc-amoy.polygon.technology', 'https://polygon-amoy.drpc.org'],
+                nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+                blockExplorer: 'https://amoy.polygonscan.com',
+                deploymentFile: 'polygonAmoy.json'
+            },
+            polygon: {
+                name: 'Polygon Mainnet',
+                chainId: '0x89', // 137
+                chainIdDecimal: 137,
+                rpcUrls: ['https://polygon-rpc.com', 'https://rpc.ankr.com/polygon'],
+                nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+                blockExplorer: 'https://polygonscan.com',
+                deploymentFile: 'polygon.json'
+            }
+        };
 
         let isConnecting = false;
 
@@ -586,9 +626,92 @@
             try { log('Runtime error: ' + message); } catch (_) {}
         });
 
+        async function switchNetwork() {
+            const networkSelect = document.getElementById('networkSelect');
+            const selectedNetwork = networkSelect.value;
+            const network = NETWORKS[selectedNetwork];
+            
+            if (!network) return;
+            
+            currentNetwork = selectedNetwork;
+            updateNetworkStatus(`Switching to ${network.name}...`);
+            
+            if (!window.ethereum) {
+                updateNetworkStatus('MetaMask not found');
+                return;
+            }
+            
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: network.chainId }]
+                });
+                await loadContractForNetwork(selectedNetwork);
+                updateNetworkStatus(`Connected to ${network.name}`);
+            } catch (switchError) {
+                if (switchError.code === 4902 || /unrecognized chain/i.test(switchError.message)) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: network.chainId,
+                                chainName: network.name,
+                                rpcUrls: network.rpcUrls,
+                                nativeCurrency: network.nativeCurrency,
+                                blockExplorerUrls: network.blockExplorer ? [network.blockExplorer] : []
+                            }]
+                        });
+                        await loadContractForNetwork(selectedNetwork);
+                        updateNetworkStatus(`Connected to ${network.name}`);
+                    } catch (addError) {
+                        updateNetworkStatus(`Failed to add ${network.name}`);
+                        log('Error adding network: ' + addError.message);
+                    }
+                } else {
+                    updateNetworkStatus(`Failed to switch to ${network.name}`);
+                    log('Error switching network: ' + switchError.message);
+                }
+            }
+        }
+
+        async function loadContractForNetwork(networkKey) {
+            const network = NETWORKS[networkKey];
+            try {
+                const response = await fetch(`./deployments/${network.deploymentFile}`);
+                if (response.ok) {
+                    const deployment = await response.json();
+                    contractAddress = deployment.poker || deployment.contractAddress;
+                    if (signer) {
+                        contract = new ethers.Contract(contractAddress, abi, signer);
+                    }
+                    log(`Contract loaded: ${contractAddress.slice(0, 10)}...`);
+                } else {
+                    log(`No deployment found for ${network.name}. Deploy contract first.`);
+                }
+            } catch (e) {
+                console.log('Could not load deployment:', e.message);
+            }
+        }
+
+        function updateNetworkStatus(message) {
+            const el = document.getElementById('network-status');
+            if (el) el.textContent = message;
+        }
+
+        async function ensureCorrectNetwork() {
+            const network = NETWORKS[currentNetwork];
+            const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+            if (currentChainId === network.chainId) return;
+            await switchNetwork();
+        }
+
+        // Legacy function for backward compatibility
         const HARDHAT_CHAIN_ID = '0x7a69'; // 31337
 
         async function ensureHardhatNetwork() {
+            if (currentNetwork !== 'localhost') {
+                return ensureCorrectNetwork();
+            }
             const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
             if (currentChainId === HARDHAT_CHAIN_ID) return;
 

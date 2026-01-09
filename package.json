@@ -9,11 +9,13 @@
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
     "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
     "deploy:polygon": "hardhat run scripts/deploy.js --network polygon",
-    "deploy:mumbai": "hardhat run scripts/deploy.js --network polygonMumbai",
+    "deploy:amoy": "hardhat run scripts/deploy.js --network polygonAmoy",
     "node": "hardhat node",
     "verify": "hardhat run scripts/verify.js",
     "clean": "hardhat clean",
-    "coverage": "hardhat coverage"
+    "coverage": "hardhat coverage",
+    "build:static": "node scripts/build-static.js",
+    "serve": "npx http-server dist -p 3000"
   },
   "keywords": [
     "poker",

@@ -3,8 +3,8 @@ require("dotenv").config();
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
 const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || "";
-const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "";
-const MUMBAI_RPC_URL = process.env.MUMBAI_RPC_URL || "";
+const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://polygon-rpc.com";
+const AMOY_RPC_URL = process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology";
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
 const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || "";
 
@@ -41,8 +41,8 @@ module.exports = {
       chainId: 137,
       blockConfirmations: 6
     },
-    polygonMumbai: {
-      url: MUMBAI_RPC_URL,
+    polygonAmoy: {
+      url: AMOY_RPC_URL,
       accounts: PRIVATE_KEY !== "0x0000000000000000000000000000000000000000000000000000000000000001" ? [PRIVATE_KEY] : [],
       chainId: 80002,
       blockConfirmations: 6
@@ -52,7 +52,7 @@ module.exports = {
     apiKey: {
       sepolia: ETHERSCAN_API_KEY,
       polygon: POLYGONSCAN_API_KEY,
-      polygonMumbai: POLYGONSCAN_API_KEY
+      polygonAmoy: POLYGONSCAN_API_KEY
     }
   },
   gasReporter: {

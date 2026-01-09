@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: decentralized-poker
+    runtime: static
+    buildCommand: npm run build:static
+    staticPublishPath: ./dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
