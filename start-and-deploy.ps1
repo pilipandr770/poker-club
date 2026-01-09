@@ -10,7 +10,7 @@ Write-Host "[1/3] Starting Hardhat node in background..." -ForegroundColor Green
 # Stop existing node if running
 $existing = Get-Job -Name HardhatNode -ErrorAction SilentlyContinue
 if ($existing) {
-    Stop-Job -Job $existing -Force
+    Stop-Job -Job $existing -ErrorAction SilentlyContinue
     Remove-Job -Job $existing -Force
     Write-Host "  → Stopped existing node" -ForegroundColor Yellow
 }
