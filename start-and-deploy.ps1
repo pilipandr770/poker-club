@@ -16,7 +16,7 @@ if ($existing) {
 }
 
 # Start the node in background (listens on all interfaces for network access)
-$nodeJob = Start-Job -Name HardhatNode -ScriptBlock {
+Start-Job -Name HardhatNode -ScriptBlock {
     Set-Location $using:PWD
     npx hardhat node --hostname 0.0.0.0
 }
