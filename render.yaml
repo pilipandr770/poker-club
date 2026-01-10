@@ -1,9 +1,8 @@
 services:
-  - type: web
+  - type: static
     name: decentralized-poker
-    runtime: static
     buildCommand: npm run build:static
-    staticPublishPath: ./dist
+    publishDir: dist
     headers:
       - path: /*
         name: X-Frame-Options

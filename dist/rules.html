@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poker Rules - Texas Hold'em</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            color: #ffd700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #aaa;
+            font-size: 1.1em;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 25px;
+            background: linear-gradient(145deg, #2ecc71, #27ae60);
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            transition: all 0.3s;
+        }
+        
+        .back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4);
+        }
+        
+        .section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        h2 {
+            color: #ffd700;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        h3 {
+            color: #3498db;
+            margin: 20px 0 10px;
+            font-size: 1.2em;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            color: #ddd;
+        }
+        
+        ul, ol {
+            margin-left: 25px;
+            margin-bottom: 15px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+            color: #ccc;
+        }
+        
+        .highlight {
+            background: rgba(255, 215, 0, 0.1);
+            border-left: 4px solid #ffd700;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 10px 10px 0;
+        }
+        
+        .highlight-green {
+            background: rgba(46, 204, 113, 0.1);
+            border-left: 4px solid #2ecc71;
+        }
+        
+        .highlight-blue {
+            background: rgba(52, 152, 219, 0.1);
+            border-left: 4px solid #3498db;
+        }
+        
+        .highlight-red {
+            background: rgba(231, 76, 60, 0.1);
+            border-left: 4px solid #e74c3c;
+        }
+        
+        .action-card {
+            display: inline-block;
+            padding: 8px 16px;
+            margin: 5px;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        
+        .action-fold { background: #e74c3c; }
+        .action-check { background: #3498db; }
+        .action-call { background: #2ecc71; }
+        .action-raise { background: #f39c12; }
+        .action-allin { background: #9b59b6; }
+        
+        .phase-flow {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        .phase-item {
+            background: linear-gradient(145deg, #2c3e50, #34495e);
+            padding: 15px 20px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 120px;
+        }
+        
+        .phase-item .name {
+            color: #ffd700;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .phase-item .desc {
+            font-size: 0.9em;
+            color: #aaa;
+        }
+        
+        .arrow {
+            display: flex;
+            align-items: center;
+            color: #3498db;
+            font-size: 1.5em;
+        }
+        
+        .hand-ranks {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+        }
+        
+        .hand-rank {
+            background: linear-gradient(145deg, #2c3e50, #34495e);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #ffd700;
+        }
+        
+        .hand-rank .rank-num {
+            color: #ffd700;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        
+        .hand-rank .rank-name {
+            color: #fff;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .hand-rank .rank-desc {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .hand-rank .rank-example {
+            color: #3498db;
+            font-family: monospace;
+            margin-top: 8px;
+        }
+        
+        .card-mini {
+            display: inline-block;
+            padding: 2px 6px;
+            margin: 2px;
+            background: #fff;
+            color: #333;
+            border-radius: 3px;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        
+        .card-mini.red { color: #e74c3c; }
+        .card-mini.black { color: #2c3e50; }
+        
+        .implementation-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        
+        .implementation-table th,
+        .implementation-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .implementation-table th {
+            background: rgba(255,215,0,0.1);
+            color: #ffd700;
+        }
+        
+        .implementation-table tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .status-yes { color: #2ecc71; }
+        
+        code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            color: #3498db;
+        }
+        
+        .two-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .two-columns {
+                grid-template-columns: 1fr;
+            }
+            .phase-flow {
+                flex-direction: column;
+                align-items: center;
+            }
+            .arrow {
+                transform: rotate(90deg);
+            }
+        }
+        
+        .faq-item {
+            margin-bottom: 20px;
+        }
+        
+        .faq-question {
+            color: #ffd700;
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+        
+        .faq-answer {
+            color: #ccc;
+            padding-left: 15px;
+            border-left: 2px solid #3498db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🃏 Texas Hold'em Rules</h1>
+            <p class="subtitle">Complete guide to playing in our decentralized poker application</p>
+            <a href="index.html" class="back-link">← Back to Game</a>
+        </header>
+
+        <div class="section">
+            <h2>📚 Texas Hold'em Basics</h2>
+            <p>Texas Hold'em is the most popular poker variant in the world. The goal is to make the best 5-card hand from 7 available cards (2 hole cards + 5 community cards) or to make all opponents fold.</p>
+            <div class="highlight">
+                <strong>Key Points:</strong>
+                <ul>
+                    <li>Each player receives <strong>2 hole cards</strong> — only you can see them</li>
+                    <li><strong>5 community cards</strong> are dealt on the table — everyone can see them</li>
+                    <li>You make the best hand from <strong>any 5 cards</strong> out of 7 available</li>
+                    <li>Our app supports <strong>2-6 players</strong></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🔄 Game Phases</h2>
+            <div class="phase-flow">
+                <div class="phase-item"><div class="name">Pre-Flop</div><div class="desc">2 cards dealt</div></div>
+                <div class="arrow">→</div>
+                <div class="phase-item"><div class="name">Flop</div><div class="desc">3 community cards</div></div>
+                <div class="arrow">→</div>
+                <div class="phase-item"><div class="name">Turn</div><div class="desc">4th card</div></div>
+                <div class="arrow">→</div>
+                <div class="phase-item"><div class="name">River</div><div class="desc">5th card</div></div>
+                <div class="arrow">→</div>
+                <div class="phase-item"><div class="name">Showdown</div><div class="desc">Cards revealed</div></div>
+            </div>
+            <h3>Phase Details:</h3>
+            <ol>
+                <li><strong>Pre-Flop:</strong> Each player receives 2 hole cards. First betting round.</li>
+                <li><strong>Flop:</strong> 3 community cards are dealt. Second betting round.</li>
+                <li><strong>Turn:</strong> 4th community card is dealt. Third betting round.</li>
+                <li><strong>River:</strong> 5th (final) community card is dealt. Final betting round.</li>
+                <li><strong>Showdown:</strong> Remaining players reveal cards. Best hand wins.</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>🎮 Available Actions</h2>
+            <p>On your turn, you can perform one of the following actions:</p>
+            <div class="two-columns">
+                <div>
+                    <h3>Basic Actions:</h3>
+                    <p><span class="action-card action-fold">FOLD</span></p>
+                    <p>Discard your cards and exit the hand. You lose all bets made.</p>
+                    <p><span class="action-card action-check">CHECK</span></p>
+                    <p>Pass without betting. <strong>Only available if no one has raised!</strong></p>
+                    <p><span class="action-card action-call">CALL</span></p>
+                    <p>Match the opponent's bet.</p>
+                </div>
+                <div>
+                    <h3>Aggressive Actions:</h3>
+                    <p><span class="action-card action-raise">RAISE</span></p>
+                    <p>Increase the bet. Minimum raise is the big blind amount.</p>
+                    <p><span class="action-card action-allin">ALL-IN</span></p>
+                    <p>Bet all your chips.</p>
+                </div>
+            </div>
+            <div class="highlight highlight-blue">
+                <strong>🤔 Can I skip my turn (CHECK)?</strong>
+                <p style="margin-top: 10px; margin-bottom: 0;">
+                    <strong>Yes!</strong> CHECK is a standard action. You can check <strong>unlimited times per game</strong>, 
+                    BUT only when <strong>your current bet equals the table's bet</strong> (no one has raised).
+                </p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>💰 Blinds (Forced Bets)</h2>
+            <div class="two-columns">
+                <div class="highlight">
+                    <strong>Small Blind</strong>
+                    <p>Player to the left of the dealer posts <strong>1/2</strong> of the minimum bet.</p>
+                    <p>In our app: <code>buy-in × 1%</code></p>
+                </div>
+                <div class="highlight">
+                    <strong>Big Blind</strong>
+                    <p>Player to the left of small blind posts the <strong>full</strong> minimum bet.</p>
+                    <p>In our app: <code>buy-in × 2%</code></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🏆 Hand Rankings (Worst to Best)</h2>
+            <div class="hand-ranks">
+                <div class="hand-rank">
+                    <span class="rank-num">10.</span><span class="rank-name">High Card</span>
+                    <div class="rank-desc">No combination, highest card counts</div>
+                    <div class="rank-example"><span class="card-mini black">A♠</span><span class="card-mini red">K♥</span><span class="card-mini black">9♣</span><span class="card-mini red">7♦</span><span class="card-mini black">3♠</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">9.</span><span class="rank-name">One Pair</span>
+                    <div class="rank-desc">Two cards of the same rank</div>
+                    <div class="rank-example"><span class="card-mini black">K♠</span><span class="card-mini red">K♥</span><span class="card-mini black">9♣</span><span class="card-mini red">7♦</span><span class="card-mini black">3♠</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">8.</span><span class="rank-name">Two Pair</span>
+                    <div class="rank-desc">Two different pairs</div>
+                    <div class="rank-example"><span class="card-mini black">K♠</span><span class="card-mini red">K♥</span><span class="card-mini black">9♣</span><span class="card-mini red">9♦</span><span class="card-mini black">3♠</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">7.</span><span class="rank-name">Three of a Kind</span>
+                    <div class="rank-desc">Three cards of the same rank</div>
+                    <div class="rank-example"><span class="card-mini black">K♠</span><span class="card-mini red">K♥</span><span class="card-mini black">K♣</span><span class="card-mini red">7♦</span><span class="card-mini black">3♠</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">6.</span><span class="rank-name">Straight</span>
+                    <div class="rank-desc">Five consecutive cards (any suits)</div>
+                    <div class="rank-example"><span class="card-mini black">5♠</span><span class="card-mini red">6♥</span><span class="card-mini black">7♣</span><span class="card-mini red">8♦</span><span class="card-mini black">9♠</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">5.</span><span class="rank-name">Flush</span>
+                    <div class="rank-desc">Five cards of the same suit</div>
+                    <div class="rank-example"><span class="card-mini red">A♥</span><span class="card-mini red">J♥</span><span class="card-mini red">8♥</span><span class="card-mini red">6♥</span><span class="card-mini red">2♥</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">4.</span><span class="rank-name">Full House</span>
+                    <div class="rank-desc">Three of a kind + a pair</div>
+                    <div class="rank-example"><span class="card-mini black">K♠</span><span class="card-mini red">K♥</span><span class="card-mini black">K♣</span><span class="card-mini red">7♦</span><span class="card-mini black">7♠</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">3.</span><span class="rank-name">Four of a Kind</span>
+                    <div class="rank-desc">Four cards of the same rank</div>
+                    <div class="rank-example"><span class="card-mini black">K♠</span><span class="card-mini red">K♥</span><span class="card-mini black">K♣</span><span class="card-mini red">K♦</span><span class="card-mini black">3♠</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">2.</span><span class="rank-name">Straight Flush</span>
+                    <div class="rank-desc">Five consecutive cards of the same suit</div>
+                    <div class="rank-example"><span class="card-mini red">5♥</span><span class="card-mini red">6♥</span><span class="card-mini red">7♥</span><span class="card-mini red">8♥</span><span class="card-mini red">9♥</span></div>
+                </div>
+                <div class="hand-rank">
+                    <span class="rank-num">1.</span><span class="rank-name">Royal Flush</span>
+                    <div class="rank-desc">10-J-Q-K-A of the same suit (best hand!)</div>
+                    <div class="rank-example"><span class="card-mini black">10♠</span><span class="card-mini black">J♠</span><span class="card-mini black">Q♠</span><span class="card-mini black">K♠</span><span class="card-mini black">A♠</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>⚙️ Implementation in Our App</h2>
+            <table class="implementation-table">
+                <tr><th>Feature</th><th>Status</th><th>Description</th></tr>
+                <tr><td>FOLD</td><td class="status-yes">✅ Implemented</td><td><code>playerAction(gameId, 1, 0)</code></td></tr>
+                <tr><td>CHECK</td><td class="status-yes">✅ Implemented</td><td><code>playerAction(gameId, 2, 0)</code> — only when your bet = table bet</td></tr>
+                <tr><td>CALL</td><td class="status-yes">✅ Implemented</td><td><code>playerAction(gameId, 3, 0)</code></td></tr>
+                <tr><td>RAISE</td><td class="status-yes">✅ Implemented</td><td><code>playerAction(gameId, 4, amount)</code></td></tr>
+                <tr><td>ALL-IN</td><td class="status-yes">✅ Implemented</td><td><code>playerAction(gameId, 5, 0)</code></td></tr>
+                <tr><td>Action Timeout</td><td class="status-yes">✅ Implemented</td><td>5 minutes per action. After timeout — auto FOLD</td></tr>
+                <tr><td>Commission</td><td class="status-yes">✅ Implemented</td><td>10% of pot goes to contract owner (rake)</td></tr>
+                <tr><td>Card Security</td><td class="status-yes">✅ Implemented</td><td>Cards computed on-demand from VRF seed, not stored in storage</td></tr>
+            </table>
+            <div class="highlight highlight-green">
+                <strong>🔒 Security:</strong> Cards are generated using Chainlink VRF (Verifiable Random Function) — a provably fair random number generator. No one can peek at opponents' cards through blockchain storage!
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>❓ FAQ</h2>
+            <div class="faq-item">
+                <div class="faq-question">How many times can I CHECK per game?</div>
+                <div class="faq-answer">Unlimited! CHECK is a standard action. The only requirement — your bet must equal the current table bet.</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-question">What if I don't act in time?</div>
+                <div class="faq-answer">You have 5 minutes for each action. If time expires, any player can call <code>forceActionTimeout()</code> and your action becomes FOLD.</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-question">Why is there a 10% commission?</div>
+                <div class="faq-answer">10% rake is standard in online poker. These funds support the project and cover gas fees for VRF operations.</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-question">Can I see opponent's cards before showdown?</div>
+                <div class="faq-answer"><strong>No!</strong> Cards are computed from VRF seed but stored only as a hash. Cards are revealed only at Showdown.</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-question">Minimum and maximum buy-in?</div>
+                <div class="faq-answer">Minimum: 0.01 ETH | Maximum: 10 ETH<br>Blinds: small = 1%, big = 2% of buy-in.</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🧠 Basic Strategy Tips</h2>
+            <div class="two-columns">
+                <div>
+                    <h3>For Beginners:</h3>
+                    <ul>
+                        <li>Play only strong starting hands (pairs, aces, kings)</li>
+                        <li>Don't be afraid to FOLD — it's normal!</li>
+                        <li>Pay attention to position (late position = advantage)</li>
+                        <li>Don't bet more than you can afford to lose</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>When to CHECK:</h3>
+                    <ul>
+                        <li>Weak hand but want to see next card for free</li>
+                        <li>Strong hand to "trap" — let opponent bluff</li>
+                        <li>Not sure about your hand</li>
+                        <li>Everyone checked — you can check too</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="highlight highlight-red">
+                <strong>⚠️ Important:</strong> Poker involves chance. Even the best strategy doesn't guarantee winning every hand. Play responsibly!
+            </div>
+        </div>
+
+        <footer style="text-align: center; padding: 30px 0; color: #666;">
+            <p>🃏 Decentralized Poker — Fair Play on the Blockchain</p>
+            <a href="index.html" class="back-link">← Back to Game</a>
+        </footer>
+    </div>
+</body>
+</html>
